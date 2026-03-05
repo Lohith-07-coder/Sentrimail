@@ -148,7 +148,7 @@
                 {{ c.status | replace('_', ' ') | title }}
               </span>
             </td>
-            <td><span class="mono">{{ c.created_at[:10] }}</span></td>
+            <td><span class="mono">{{ c.get('created_at','N/A')[:10] if c.get('created_at') else 'N/A' }}</span></td>
           </tr>
           {% endfor %}
         </tbody>
