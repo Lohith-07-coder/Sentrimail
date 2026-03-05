@@ -165,7 +165,11 @@
       <div class="meter">
         <div class="meter-header">
           <span>Confidence</span>
-          <span>{{ "%.0f"|format(complaint.sentiment_score * 100) }}%</span>
+          {% if complaint.get("sentiment_score") %}
+          <span>{{ "%.0f"|format(complaint.get("sentiment_score") * 100) }}%</span>
+          {% else %}
+          <span>N/A</span>
+          {% endif %}
         </div>
         <div class="meter-bar">
           <div class="meter-fill" style="width:{{ "%.0f"|format(complaint.sentiment_score * 100) }}%;
