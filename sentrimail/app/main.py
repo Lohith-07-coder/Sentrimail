@@ -233,23 +233,36 @@ async def admin_dashboard(request: Request):
         }
     )
 
-
 @app.get("/admin/complaint/{complaint_id}", response_class=HTMLResponse)
 async def complaint_detail(request: Request, complaint_id: str):
     user = get_current_user(request)
-    if not user or user["role"] != "admin":
+
+    if not user or user.get("role") != "admin":
         return RedirectResponse("/login", status_code=302)
 
     complaint = get_complaint_by_id(complaint_id)
+
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
 
-    return templates.TemplateResponse("complaint_detail.html", {
-        "request": request,
-        "user": user,
-        "complaint": complaint
-    })
+    # Normalize complaint
+    complaint_data = {
+        "id": complaint.get("id"),
+        "title": complaint.get("title", "Untitled"),
+        "priority": complaint.get("priority", "LOW"),
+        "status": complaint.get("status", "pending"),
+        "created_at": complaint.get("created_at", "N/A"),
+        "description": complaint.get("description", "")
+    }
 
+    return templates.TemplateResponse(
+        "complaint_detail.html",
+        {
+            "request": request,
+            "user": user,
+            "complaint": complaint_data
+        }
+    )
 
 @app.post("/admin/complaint/{complaint_id}/status")
 async def update_status(request: Request, complaint_id: str, status: str = Form(...)):
