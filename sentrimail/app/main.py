@@ -197,21 +197,41 @@ async def admin_dashboard(request: Request):
 
     # Sort by priority weight
     priority_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
-    complaints_sorted = sorted(complaints, key=lambda x: priority_order.get(x.get("priority", "LOW"), 3))
-
-    return templates.TemplateResponse("admin_dashboard.html", {
-        "request": request,
-        "user": user,
-        "complaints": complaints_sorted,
-        "stats": {
-            "total": total,
-            "critical": critical,
-            "high": high,
-            "medium": medium,
-            "low": low,
-            "pending": pending
+    
+    # Normalize complaints so template never crashes
+    normalized_complaints = []
+    for c in complaints:
+        normalized_complaints.append({
+            "id": c.get("id"),
+            "title": c.get("title", "Untitled"),
+            "priority": c.get("priority", "LOW"),
+            "status": c.get("status", "pending"),
+            "created_at": c.get("created_at", "N/A"),
+            "description": c.get("description", "")
+        })
+    
+    # Sort complaints safely
+    complaints_sorted = sorted(
+        normalized_complaints,
+        key=lambda x: priority_order.get(x["priority"], 3)
+    )
+    
+    return templates.TemplateResponse(
+        "admin_dashboard.html",
+        {
+            "request": request,
+            "user": user,
+            "complaints": complaints_sorted,
+            "stats": {
+                "total": total,
+                "critical": critical,
+                "high": high,
+                "medium": medium,
+                "low": low,
+                "pending": pending
+            }
         }
-    })
+    )
 
 
 @app.get("/admin/complaint/{complaint_id}", response_class=HTMLResponse)
