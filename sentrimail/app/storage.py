@@ -1,116 +1,48 @@
-import json
-import os
 import uuid
-from datetime import datetime
-from typing import List, Dict, Any
-from app.firebase_config import db
-import uuid
+from datetime import datetime, timezone
+from typing import Dict, List, Optional
+
+from app.mongodb import db
 
 
-# --------------------------------------------------
-# Paths
-# --------------------------------------------------
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(BASE_DIR, "data")
-
-os.makedirs(DATA_DIR, exist_ok=True)
-
-COMPLAINTS_FILE = os.path.join(DATA_DIR, "complaints.json")
-USERS_FILE = os.path.join(DATA_DIR, "users.json")
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
-# --------------------------------------------------
-# Init Files
-# --------------------------------------------------
+def get_all_complaints() -> List[Dict]:
+    complaints = db.complaints.find({}, {"_id": 0}).sort("created_at", -1)
+    return list(complaints)
 
-def _ensure_files():
-    if not os.path.exists(COMPLAINTS_FILE):
-        with open(COMPLAINTS_FILE, "w") as f:
-            json.dump([], f)
-
-    if not os.path.exists(USERS_FILE):
-        with open(USERS_FILE, "w") as f:
-            json.dump([], f)
-
-
-def _load_json(path: str):
-    _ensure_files()
-
-    try:
-        with open(path, "r") as f:
-            return json.load(f)
-    except Exception:
-        return []
-
-
-def _save_json(path: str, data):
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2, default=str)
-
-
-# --------------------------------------------------
-# Complaints
-# --------------------------------------------------
-
-def get_all_complaints():
-
-    docs = db.collection("complaints").stream()
-
-    complaints = []
-
-    for doc in docs:
-        data = doc.to_dict()
-        data["id"] = doc.id
-        complaints.append(data)
-
-    return complaints
 
 def get_user_complaints(username: str) -> List[Dict]:
-    complaints = _load_json(COMPLAINTS_FILE)
-
-    return sorted(
-        [c for c in complaints if c.get("username") == username],
-        key=lambda x: x.get("created_at", ""),
-        reverse=True,
-    )
+    complaints = db.complaints.find(
+        {"username": username},
+        {"_id": 0},
+    ).sort("created_at", -1)
+    return list(complaints)
 
 
-def get_complaint_by_id(cid):
-
-    doc = db.collection("complaints").document(cid).get()
-
-    if doc.exists:
-        data = doc.to_dict()
-        data["id"] = doc.id
-        return data
-
-    return None
+def get_complaint_by_id(cid: str) -> Optional[Dict]:
+    return db.complaints.find_one({"id": cid}, {"_id": 0})
 
 
-def save_complaint(data):
+def save_complaint(data: Dict) -> Dict:
+    complaint = dict(data)
+    complaint["id"] = str(uuid.uuid4())
+    complaint["status"] = complaint.get("status", "pending")
+    complaint["created_at"] = complaint.get("created_at", _now_iso())
+    complaint["updated_at"] = complaint.get("updated_at", complaint["created_at"])
 
-    complaint_id = str(uuid.uuid4())
+    db.complaints.insert_one(complaint)
+    return complaint
 
-    db.collection("complaints").document(complaint_id).set(data)
-
-    data["id"] = complaint_id
-
-    return data
 
 def update_complaint_status(complaint_id: str, status: str) -> bool:
-
-    complaints = _load_json(COMPLAINTS_FILE)
-
-    for c in complaints:
-        if c["id"] == complaint_id:
-            c["status"] = status
-            c["updated_at"] = datetime.now().isoformat()
-
-            _save_json(COMPLAINTS_FILE, complaints)
-            return True
-
-    return False
+    result = db.complaints.update_one(
+        {"id": complaint_id},
+        {"$set": {"status": status, "updated_at": _now_iso()}},
+    )
+    return result.matched_count > 0
 
 
 def update_complaint_response(
@@ -118,16 +50,14 @@ def update_complaint_response(
     response: str,
     status: str = "resolved",
 ) -> bool:
-
-    complaints = _load_json(COMPLAINTS_FILE)
-
-    for c in complaints:
-        if c["id"] == complaint_id:
-            c["admin_response"] = response
-            c["status"] = status
-            c["updated_at"] = datetime.now().isoformat()
-
-            _save_json(COMPLAINTS_FILE, complaints)
-            return True
-
-    return False
+    result = db.complaints.update_one(
+        {"id": complaint_id},
+        {
+            "$set": {
+                "admin_response": response,
+                "status": status,
+                "updated_at": _now_iso(),
+            }
+        },
+    )
+    return result.matched_count > 0

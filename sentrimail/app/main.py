@@ -7,12 +7,20 @@ import uvicorn
 import os
 import sys
 from datetime import datetime
-from app.firebase_config import db
+from app.mongodb import db, init_mongodb
 
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.auth import authenticate_user, create_session, get_current_user, logout_user, get_all_users, register_user
+from app.auth import (
+    authenticate_user,
+    create_session,
+    ensure_default_users,
+    get_all_users,
+    get_current_user,
+    logout_user,
+    register_user,
+)
 from app.storage import (
     get_all_complaints,
     get_user_complaints,
@@ -38,6 +46,94 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 os.makedirs(STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+
+
+def _merge_or_backfill_analysis(complaint: dict) -> dict:
+    """
+    Backfill missing/stale AI fields for older complaint records.
+    This keeps admin pages useful even when records were saved before AI fields existed.
+    """
+    description = complaint.get("description", "") or ""
+    category = complaint.get("category", "other") or "other"
+    username = complaint.get("username", "Customer") or "Customer"
+    complaint_id = complaint.get("id", "N/A") or "N/A"
+
+    computed = analyze_complaint(
+        description,
+        category=category,
+        username=username,
+        complaint_id=complaint_id,
+    )
+
+    model_used = complaint.get("model_used")
+    existing_suggestion = complaint.get("admin_suggested_response") or complaint.get("ai_suggested_response")
+    has_priority_score = isinstance(complaint.get("priority_score"), (int, float))
+    has_sentiment_score = isinstance(complaint.get("sentiment_score"), (int, float))
+    has_emotion_score = isinstance(complaint.get("emotion_score"), (int, float))
+
+    force_refresh = model_used in (None, "", "unknown")
+
+    needs_backfill = (
+        model_used in (None, "", "unknown")
+        or not existing_suggestion
+        or not has_priority_score
+        or not has_sentiment_score
+        or not has_emotion_score
+        or not complaint.get("root_cause_summary")
+    )
+
+    if not needs_backfill:
+        return complaint
+
+    merged = dict(complaint)
+    merged["priority"] = computed.get("priority", "LOW") if force_refresh else complaint.get("priority", computed.get("priority", "LOW"))
+    merged["priority_score"] = computed.get("priority_score", 0) if force_refresh else complaint.get("priority_score", computed.get("priority_score", 0))
+    merged["priority_description"] = computed.get("priority_description", "") if force_refresh else (complaint.get("priority_description") or computed.get("priority_description", ""))
+    merged["sentiment_label"] = computed.get("sentiment_label", "NEUTRAL") if force_refresh else (complaint.get("sentiment_label") or computed.get("sentiment_label", "NEUTRAL"))
+    merged["sentiment_score"] = computed.get("sentiment_score", 0) if force_refresh else complaint.get("sentiment_score", computed.get("sentiment_score", 0))
+    merged["emotion_label"] = computed.get("emotion_label", "Neutral") if force_refresh else (complaint.get("emotion_label") or computed.get("emotion_label", "Neutral"))
+    merged["emotion_score"] = computed.get("emotion_score", 0) if force_refresh else complaint.get("emotion_score", computed.get("emotion_score", 0))
+    merged["root_cause_summary"] = complaint.get("root_cause_summary") or computed.get("root_cause_summary", "")
+    merged["admin_suggested_response"] = (
+        complaint.get("admin_suggested_response")
+        or complaint.get("ai_suggested_response")
+        or computed.get("admin_suggested_response", "")
+    )
+    merged["ai_suggested_response"] = (
+        complaint.get("ai_suggested_response")
+        or complaint.get("admin_suggested_response")
+        or computed.get("ai_suggested_response", "")
+    )
+    merged["model_used"] = computed.get("model_used", "rule-based")
+
+    # Persist backfilled AI fields so future renders are consistent.
+    db.complaints.update_one(
+        {"id": complaint_id},
+        {
+            "$set": {
+                "priority": merged.get("priority", "LOW"),
+                "priority_score": merged.get("priority_score", 0),
+                "priority_description": merged.get("priority_description", ""),
+                "sentiment_label": merged.get("sentiment_label", "NEUTRAL"),
+                "sentiment_score": merged.get("sentiment_score", 0),
+                "emotion_label": merged.get("emotion_label", "Neutral"),
+                "emotion_score": merged.get("emotion_score", 0),
+                "root_cause_summary": merged.get("root_cause_summary", ""),
+                "admin_suggested_response": merged.get("admin_suggested_response", ""),
+                "ai_suggested_response": merged.get("ai_suggested_response", ""),
+                "model_used": merged.get("model_used", "rule-based"),
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+        },
+    )
+
+    return merged
+
+
+@app.on_event("startup")
+async def startup_event():
+    init_mongodb()
+    ensure_default_users()
 
 
 # ─── Routes ────────────────────────────────────────────────────
@@ -76,7 +172,7 @@ async def login(request: Request, username: str = Form(...), password: str = For
         })
 
     # 🔹 Save login event
-    db.collection("login_logs").add({
+    db.login_logs.insert_one({
         "username": username,
         "role": user.get("role"),
         "login_time": datetime.utcnow().isoformat()
@@ -145,7 +241,7 @@ async def submit_complaint(
     # AI Analysis
     analysis = analyze_complaint(description, category="other", username=user["username"])
 
-    is_low_priority = analysis.get("priority") == "LOW"
+    auto_resolvable = bool(analysis.get("auto_resolvable", False))
 
     complaint_data = {
         "title": title,
@@ -156,10 +252,12 @@ async def submit_complaint(
         **analysis,
     }
 
-    # If LOW priority, let AI auto-respond and mark as resolved
-    if is_low_priority:
+    # Auto-resolve only when AI marks it safe/resolvable.
+    if auto_resolvable:
         complaint_data["status"] = "resolved"
-        complaint_data["admin_response"] = analysis.get("ai_suggested_response", "")
+        complaint_data["admin_response"] = analysis.get("user_auto_response", "")
+    else:
+        complaint_data["status"] = "pending"
 
     complaint = save_complaint(complaint_data)
 
@@ -172,7 +270,7 @@ async def submit_complaint(
             "analysis": analysis,
             "title": title,
             "complaint": complaint,
-            "auto_resolved": is_low_priority,
+            "auto_resolved": auto_resolvable,
         },
     )
 
@@ -245,14 +343,34 @@ async def complaint_detail(request: Request, complaint_id: str):
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
 
-    # Normalize complaint
+    complaint = _merge_or_backfill_analysis(complaint)
+
+    # Normalize complaint so template rendering remains safe for older/incomplete records.
     complaint_data = {
         "id": complaint.get("id"),
         "title": complaint.get("title", "Untitled"),
         "priority": complaint.get("priority", "LOW"),
         "status": complaint.get("status", "pending"),
-        "created_at": complaint.get("created_at", "N/A"),
-        "description": complaint.get("description", "")
+        "created_at": complaint.get("created_at", ""),
+        "updated_at": complaint.get("updated_at") or complaint.get("created_at", ""),
+        "description": complaint.get("description", ""),
+        "username": complaint.get("username", "Unknown"),
+        "email": complaint.get("email", ""),
+        "category": complaint.get("category", "other"),
+        "root_cause_summary": complaint.get("root_cause_summary", "Not available."),
+        "admin_response": complaint.get("admin_response", ""),
+        "admin_suggested_response": complaint.get(
+            "admin_suggested_response",
+            complaint.get("ai_suggested_response", ""),
+        ),
+        "ai_suggested_response": complaint.get("ai_suggested_response", ""),
+        "model_used": complaint.get("model_used", "unknown"),
+        "sentiment_label": complaint.get("sentiment_label", "NEUTRAL"),
+        "sentiment_score": complaint.get("sentiment_score", 0),
+        "emotion_label": complaint.get("emotion_label", "neutral"),
+        "emotion_score": complaint.get("emotion_score", 0),
+        "priority_score": complaint.get("priority_score", 0),
+        "priority_description": complaint.get("priority_description", ""),
     }
 
     return templates.TemplateResponse(

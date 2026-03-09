@@ -61,6 +61,7 @@
   margin-top: 8px;
 }
 .root-box { background: rgba(59,130,246,0.05); border: 1px solid rgba(59,130,246,0.15); }
+.suggestion-box { background: rgba(245,158,11,0.06); border: 1px solid rgba(245,158,11,0.2); white-space: pre-wrap; }
 .response-box { background: rgba(16,185,129,0.05); border: 1px solid rgba(16,185,129,0.15); white-space: pre-wrap; font-family: 'DM Mono', monospace; font-size: 11px; }
 .status-form { display: flex; gap: 8px; flex-wrap: wrap; }
 @media (max-width: 768px) { .detail-grid { grid-template-columns: 1fr; } }
@@ -131,9 +132,19 @@
 
       <!-- Admin Final Response -->
       <div class="detail-section">
+        <div class="detail-section-title">🤖 AI Suggested Response (Admin Draft)</div>
+        <div class="text-box suggestion-box" id="aiSuggestedResponse">
+          {{ complaint.admin_suggested_response or complaint.ai_suggested_response or "No AI suggestion available." }}
+        </div>
+        <div style="margin-top:10px">
+          <button type="button" class="btn btn-outline btn-sm" onclick="useAiSuggestion()">Use Suggestion In Reply Box</button>
+        </div>
+      </div>
+
+      <div class="detail-section">
         <div class="detail-section-title">✏️ Final Response To User</div>
         <form method="POST" action="/admin/complaint/{{ complaint.id }}/response">
-          <textarea name="response" class="form-control" rows="6" placeholder="Compose the message that will be sent to the user. You can start from the AI suggestion shown on the right.">{% if complaint.admin_response %}{{ complaint.admin_response }}{% else %}{{ complaint.ai_suggested_response }}{% endif %}</textarea>
+          <textarea id="adminResponseBox" name="response" class="form-control" rows="6" placeholder="Compose the message that will be sent to the user. You can start from the AI suggestion shown above.">{% if complaint.admin_response %}{{ complaint.admin_response }}{% else %}{{ complaint.admin_suggested_response or complaint.ai_suggested_response }}{% endif %}</textarea>
           <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
             <button type="submit" class="btn btn-primary btn-sm">Send &amp; Mark Resolved</button>
           </div>
@@ -165,14 +176,14 @@
       <div class="meter">
         <div class="meter-header">
           <span>Confidence</span>
-          {% if complaint.get("sentiment_score") %}
+          {% if complaint.get("sentiment_score") is not none %}
           <span>{{ "%.0f"|format(complaint.get("sentiment_score") * 100) }}%</span>
           {% else %}
           <span>N/A</span>
           {% endif %}
         </div>
         <div class="meter-bar">
-          <div class="meter-fill" style="width:{{ "%.0f"|format(complaint.sentiment_score * 100) }}%;
+          <div class="meter-fill" style="width:{{ "%.0f"|format(complaint.get("sentiment_score", 0) * 100) }}%;
             background:{% if complaint.sentiment_label == 'NEGATIVE' %}#f43f5e{% elif complaint.sentiment_label == 'POSITIVE' %}#10b981{% else %}#64748b{% endif %}">
           </div>
         </div>
@@ -233,4 +244,14 @@
     </div>
   </div>
 </div>
+
+<script>
+function useAiSuggestion() {
+  const source = document.getElementById("aiSuggestedResponse");
+  const target = document.getElementById("adminResponseBox");
+  if (!source || !target) return;
+  target.value = source.textContent.trim();
+  target.focus();
+}
+</script>
 {% endblock %}

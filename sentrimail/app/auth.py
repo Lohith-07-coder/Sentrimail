@@ -1,101 +1,97 @@
 """
 SentriMail Authentication
 --------------------------
-Session-cookie based auth. No JWT for MVP simplicity.
-Users stored in data/users.json
+Session-cookie based auth with MongoDB persistence.
 """
 
-import json
-import os
 import hashlib
 import secrets
-from typing import Optional, Dict
+from typing import Dict, Optional
+
 from fastapi import Request
 from fastapi.responses import Response
-from app.firebase_config import db
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
-USERS_FILE = os.path.join(DATA_DIR, "users.json")
-SESSIONS: Dict[str, dict] = {}  # In-memory session store
+from app.mongodb import db
 
+SESSIONS: Dict[str, dict] = {}
 SESSION_COOKIE = "sentrimail_session"
-
-
-def _ensure_data_dir():
-    os.makedirs(DATA_DIR, exist_ok=True)
-
-
-def _load_users() -> list:
-    _ensure_data_dir()
-    if not os.path.exists(USERS_FILE):
-        # Seed default users
-        default_users = [
-            {
-                "username": "admin",
-                "password": _hash_password("admin123"),
-                "email": "admin@sentrimail.io",
-                "role": "admin"
-            },
-            {
-                "username": "alice",
-                "password": _hash_password("alice123"),
-                "email": "alice@example.com",
-                "role": "user"
-            },
-            {
-                "username": "bob",
-                "password": _hash_password("bob123"),
-                "email": "bob@example.com",
-                "role": "user"
-            }
-        ]
-        with open(USERS_FILE, "w") as f:
-            json.dump(default_users, f, indent=2)
-        return default_users
-
-    with open(USERS_FILE, "r") as f:
-        return json.load(f)
-
-
-def _save_users(users: list):
-    _ensure_data_dir()
-    with open(USERS_FILE, "w") as f:
-        json.dump(users, f, indent=2)
 
 
 def _hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 
-def authenticate_user(username, password):
+def ensure_default_users() -> None:
+    default_users = [
+        {
+            "username": "admin",
+            "password": _hash_password("admin123"),
+            "email": "admin@sentrimail.io",
+            "role": "admin",
+        },
+        {
+            "username": "alice",
+            "password": _hash_password("alice123"),
+            "email": "alice@example.com",
+            "role": "user",
+        },
+        {
+            "username": "bob",
+            "password": _hash_password("bob123"),
+            "email": "bob@example.com",
+            "role": "user",
+        },
+    ]
 
-    users = db.collection("users").where("username", "==", username).stream()
+    for user in default_users:
+        db.users.update_one(
+            {"username": user["username"]},
+            {"$setOnInsert": user},
+            upsert=True,
+        )
 
-    for user in users:
-        data = user.to_dict()
 
-        if data["password"] == password:
-            return data
+def authenticate_user(username: str, password: str):
+    user = db.users.find_one({"username": username})
+    if not user:
+        return None
 
-    return None
+    input_hash = _hash_password(password)
+    stored_password = user.get("password", "")
 
-def register_user(username, password, email):
+    # Migration-safe check for older plaintext passwords already in DB.
+    if stored_password not in {input_hash, password}:
+        return None
 
-    users_ref = db.collection("users")
+    if stored_password == password:
+        db.users.update_one(
+            {"username": username},
+            {"$set": {"password": input_hash}},
+        )
 
-    existing = users_ref.where("username", "==", username).stream()
+    return {
+        "username": user.get("username"),
+        "email": user.get("email", ""),
+        "role": user.get("role", "user"),
+    }
 
-    for user in existing:
+
+def register_user(username: str, password: str, email: str):
+    existing = db.users.find_one({"username": username}, {"_id": 1})
+    if existing:
         return {"success": False, "message": "Username already exists"}
 
-    users_ref.add({
-        "username": username,
-        "password": password,
-        "email": email,
-        "role": "user"
-    })
-
+    db.users.insert_one(
+        {
+            "username": username,
+            "password": _hash_password(password),
+            "email": email,
+            "role": "user",
+        }
+    )
     return {"success": True}
+
+
 def create_session(response: Response, user: dict):
     token = secrets.token_urlsafe(32)
     SESSIONS[token] = user
@@ -103,8 +99,8 @@ def create_session(response: Response, user: dict):
         key=SESSION_COOKIE,
         value=token,
         httponly=True,
-        max_age=86400,  # 24 hours
-        samesite="lax"
+        max_age=86400,
+        samesite="lax",
     )
 
 
@@ -120,5 +116,5 @@ def logout_user(response: Response):
 
 
 def get_all_users() -> list:
-    users = _load_users()
-    return [{k: v for k, v in u.items() if k != "password"} for u in users]
+    users = db.users.find({}, {"_id": 0, "password": 0})
+    return list(users)

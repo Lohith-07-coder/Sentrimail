@@ -1,0 +1,79 @@
+{
+  "model_type": "tfidf-nearest-neighbor",
+  "num_samples": 5,
+  "idf": {
+    "issue": 1.4054651081081644,
+    "with": 2.09861228866811,
+    "suruggeling": 2.09861228866811,
+    "internet": 1.4054651081081644,
+    "thanks": 2.09861228866811,
+    "resolved": 2.09861228866811,
+    "have": 1.6931471805599454,
+    "am": 2.09861228866811,
+    "able": 2.09861228866811,
+    "not": 2.09861228866811,
+    "in": 2.09861228866811,
+    "to": 2.09861228866811,
+    "log": 2.09861228866811
+  },
+  "samples": [
+    {
+      "text": "suruggeling with internet issue",
+      "response": "Dear {username},\n\nThank you for reaching out. We have logged your feedback and will address it in due course. If your situation changes, please don't hesitate to submit an updated complaint.\n\nReference ID: N/A\n\nBest regards,\nSentriMail Support Team",
+      "category": "technical",
+      "priority": "LOW",
+      "vector": {
+        "suruggeling": 0.5875214115212867,
+        "with": 0.5875214115212867,
+        "internet": 0.3934699365949511,
+        "issue": 0.3934699365949511
+      }
+    },
+    {
+      "text": "thanks resolved",
+      "response": "Dear {username},\n\nThank you for reaching out. We have logged your feedback and will address it in due course. If your situation changes, please don't hesitate to submit an updated complaint.\n\nReference ID: N/A\n\nBest regards,\nSentriMail Support Team",
+      "category": "other",
+      "priority": "LOW",
+      "vector": {
+        "thanks": 0.7071067811865475,
+        "resolved": 0.7071067811865475
+      }
+    },
+    {
+      "text": "i have internet issue",
+      "response": "Dear {username},\n\nThank you for reaching out. We have logged your feedback and will address it in due course. If your situation changes, please don't hesitate to submit an updated complaint.\n\nReference ID: N/A\n\nBest regards,\nSentriMail Support Team",
+      "category": "other",
+      "priority": "LOW",
+      "vector": {
+        "have": 0.6484626256872699,
+        "internet": 0.5382825573464051,
+        "issue": 0.5382825573464051
+      }
+    },
+    {
+      "text": "i have internet issue",
+      "response": "Dear {username},\n\nThank you for reaching out. We have logged your feedback and will address it in due course. If your situation changes, please don't hesitate to submit an updated complaint.\n\nReference ID: N/A\n\nBest regards,\nSentriMail Support Team",
+      "category": "other",
+      "priority": "LOW",
+      "vector": {
+        "have": 0.6484626256872699,
+        "internet": 0.5382825573464051,
+        "issue": 0.5382825573464051
+      }
+    },
+    {
+      "text": "i am not able to log in",
+      "response": "Dear {username},\n\nThank you for reaching out. We have logged your feedback and will address it in due course. If your situation changes, please don't hesitate to submit an updated complaint.\n\nReference ID: N/A\n\nBest regards,\nSentriMail Support Team",
+      "category": "other",
+      "priority": "LOW",
+      "vector": {
+        "am": 0.4082482904638631,
+        "not": 0.4082482904638631,
+        "able": 0.4082482904638631,
+        "to": 0.4082482904638631,
+        "log": 0.4082482904638631,
+        "in": 0.4082482904638631
+      }
+    }
+  ]
+}
