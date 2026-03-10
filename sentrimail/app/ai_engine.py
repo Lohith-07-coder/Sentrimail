@@ -130,7 +130,11 @@ def _predict_response_from_dataset(
 
     idf = _response_model.get("idf", {})
     samples = _response_model.get("samples", [])
+    num_samples = int(_response_model.get("num_samples", 0) or 0)
+    unique_response_count = int(_response_model.get("unique_response_count", 0) or 0)
     if not idf or not samples:
+        return ""
+    if num_samples < 10 or unique_response_count <= 1:
         return ""
 
     query_vec = _vectorize_for_inference(text, idf)
@@ -178,6 +182,22 @@ def _is_generic_dataset_response(text: str) -> bool:
     ]
     hits = sum(1 for marker in generic_markers if marker in t)
     return hits >= 2
+
+
+def _infer_issue_type(text: str, category: str) -> str:
+    t = (text or "").lower()
+    c = (category or "").lower()
+    if c in {"billing", "refund"} or any(k in t for k in ["refund", "charged", "billing", "payment", "invoice"]):
+        return "billing"
+    if any(k in t for k in ["login", "log in", "sign in", "password", "otp", "account locked"]):
+        return "auth"
+    if c == "technical" or any(k in t for k in ["server", "internet", "network", "pipeline", "error", "crash", "bug", "down"]):
+        return "technical"
+    if c == "delivery" or any(k in t for k in ["delivery", "shipment", "parcel", "courier", "late order"]):
+        return "delivery"
+    if c == "customer_service" or any(k in t for k in ["support", "agent", "rude", "no response"]):
+        return "support"
+    return "general"
 
 
 def _load_models() -> None:
@@ -326,8 +346,22 @@ def _generate_auto_user_response(username: str) -> str:
     )
 
 
-def _generate_admin_suggestion(priority: str, username: str) -> str:
+def _generate_admin_suggestion(
+    priority: str,
+    username: str,
+    text: str = "",
+    category: str = "other",
+) -> str:
+    issue = _infer_issue_type(text, category)
+
     if priority == "CRITICAL":
+        if issue == "technical":
+            return (
+                f"Dear {username},\n\n"
+                "We sincerely apologize. We have escalated this to our critical incident team due to potential service instability. "
+                "Immediate containment and root-cause investigation are in progress, and we will share a concrete update shortly.\n\n"
+                "Regards,\nSentriMail Resolution Team"
+            )
         return (
             f"Dear {username},\n\n"
             "We sincerely apologize. Your complaint has been escalated to our critical-response queue and is being "
@@ -335,11 +369,44 @@ def _generate_admin_suggestion(priority: str, username: str) -> str:
             "Regards,\nSentriMail Resolution Team"
         )
     if priority == "HIGH":
+        if issue == "billing":
+            return (
+                f"Dear {username},\n\n"
+                "Thank you for reporting this billing concern. We have prioritized your case and started verification of transactions and invoice history. "
+                "You will receive a detailed update after our finance review.\n\n"
+                "Regards,\nSentriMail Billing Support"
+            )
+        if issue == "auth":
+            return (
+                f"Dear {username},\n\n"
+                "Thank you for reporting the login issue. We have prioritized your case and assigned it to an authentication specialist. "
+                "We will verify account status and share the next recovery steps shortly.\n\n"
+                "Regards,\nSentriMail Support"
+            )
         return (
             f"Dear {username},\n\n"
             "Thank you for reporting this issue. We have prioritized your complaint and assigned it to a specialist. "
             "You will receive an update soon after investigation.\n\n"
             "Regards,\nSentriMail Support"
+        )
+    if issue == "technical":
+        return (
+            f"Dear {username},\n\n"
+            "Thanks for reporting this technical issue. Our team has started diagnostics and will share troubleshooting guidance "
+            "or a fix timeline in the next update.\n\n"
+            "Regards,\nSentriMail Support"
+        )
+    if issue == "auth":
+        return (
+            f"Dear {username},\n\n"
+            "Thanks for reporting the login/access problem. We are reviewing account authentication logs and will share the next steps shortly.\n\n"
+            "Regards,\nSentriMail Support"
+        )
+    if issue == "billing":
+        return (
+            f"Dear {username},\n\n"
+            "Thanks for sharing your billing concern. We are validating the charge details and will provide a clear breakdown and resolution soon.\n\n"
+            "Regards,\nSentriMail Billing Support"
         )
     return (
         f"Dear {username},\n\n"
@@ -386,7 +453,12 @@ def analyze_complaint(
     if dataset_suggestion and priority_data["priority"] in {"HIGH", "CRITICAL"} and _is_generic_dataset_response(dataset_suggestion):
         dataset_suggestion = ""
 
-    admin_suggestion = dataset_suggestion or _generate_admin_suggestion(priority_data["priority"], username)
+    admin_suggestion = dataset_suggestion or _generate_admin_suggestion(
+        priority=priority_data["priority"],
+        username=username,
+        text=text,
+        category=category,
+    )
     auto_response = (dataset_suggestion or _generate_auto_user_response(username)) if auto_resolvable else ""
 
     return {

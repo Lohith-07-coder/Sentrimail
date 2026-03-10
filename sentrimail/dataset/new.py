@@ -120,6 +120,7 @@ def _vectorize(text: str, idf: Dict[str, float]) -> Dict[str, float]:
 def _build_model(records: List[Dict[str, object]]) -> Dict[str, object]:
     docs: List[List[str]] = []
     samples: List[Dict[str, object]] = []
+    unique_responses = set()
 
     for row in records:
         complaint = _get_first_non_empty(row, TEXT_KEYS)
@@ -132,10 +133,12 @@ def _build_model(records: List[Dict[str, object]]) -> Dict[str, object]:
             continue
 
         docs.append(tokens)
+        cleaned_response = _sanitize_response_template(response)
+        unique_responses.add(cleaned_response)
         samples.append(
             {
                 "text": complaint,
-                "response": _sanitize_response_template(response),
+                "response": cleaned_response,
                 "category": str(row.get("category", "")).strip().lower(),
                 "priority": str(row.get("priority", "")).strip().upper(),
             }
@@ -160,6 +163,7 @@ def _build_model(records: List[Dict[str, object]]) -> Dict[str, object]:
     return {
         "model_type": "tfidf-nearest-neighbor",
         "num_samples": len(samples),
+        "unique_response_count": len(unique_responses),
         "idf": idf,
         "samples": samples,
     }
