@@ -19,6 +19,7 @@
   {% if success %}
   <div class="alert alert-success fade-up" style="margin-bottom:20px">
     ✅ Complaint "<strong>{{ title }}</strong>" submitted successfully.
+    <br>Your tracking code is: <strong style="color:var(--blue);font-family:monospace;font-size:16px;">{{ complaint.complaint_code }}</strong>
   </div>
   {% endif %}
 
@@ -29,8 +30,34 @@
         <input type="text" name="title" class="form-control" placeholder="Brief summary of your issue" required>
       </div>
       <div class="form-group">
-        <label class="form-label">Describe Your Issue</label>
-        <textarea name="description" class="form-control" rows="7" placeholder="Please describe your complaint in detail." required></textarea>
+        <label class="form-label">Language</label>
+        <select name="language" class="form-control">
+          <option value="en" selected>English</option>
+          <option value="hi">Hindi</option>
+          <option value="ta">Tamil</option>
+          <option value="te">Telugu</option>
+          <option value="kn">Kannada</option>
+          <option value="ml">Malayalam</option>
+          <option value="bn">Bengali</option>
+          <option value="mr">Marathi</option>
+          <option value="es">Spanish</option>
+          <option value="fr">French</option>
+          <option value="ar">Arabic</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
+          Describe Your Issue
+          <span style="display:flex; gap:8px; align-items:center;">
+            <span id="recordingIndicator" style="display:none; width:8px; height:8px; border-radius:50%; background:red; box-shadow:0 0 8px red; animation:pulse 1s infinite;"></span>
+            <button type="button" id="micBtn" class="btn btn-sm btn-outline" style="padding:4px 8px;" title="Dictate complaint">🎤</button>
+            <label class="btn btn-sm btn-outline" style="padding:4px 8px; cursor:pointer;" title="Upload Audio File">
+              📁 <input type="file" id="audioUpload" accept=".mp3,.wav" style="display:none;">
+            </label>
+          </span>
+        </label>
+        <textarea id="complaintDesc" name="description" class="form-control" rows="7" placeholder="Please describe your complaint in detail." required></textarea>
+        <div id="transcribeStatus" style="font-size:12px; color:var(--muted); margin-top:4px; display:none;">Transcribing...</div>
       </div>
       <button type="submit" class="btn btn-primary" style="width:100%">
         Submit
@@ -38,4 +65,90 @@
     </form>
   </div>
 </div>
+
+<script>
+// Web Speech API
+const micBtn = document.getElementById('micBtn');
+const recordingIndicator = document.getElementById('recordingIndicator');
+const complaintDesc = document.getElementById('complaintDesc');
+const transcribeStatus = document.getElementById('transcribeStatus');
+const audioUpload = document.getElementById('audioUpload');
+
+let recognition;
+let isRecording = false;
+
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  recognition.onresult = (event) => {
+    let finalTranscript = '';
+    for (let i = event.resultIndex; i < event.results.length; ++i) {
+      if (event.results[i].isFinal) {
+        finalTranscript += event.results[i][0].transcript;
+      }
+    }
+    if (finalTranscript) {
+      complaintDesc.value += (complaintDesc.value ? ' ' : '') + finalTranscript;
+    }
+  };
+
+  recognition.onend = () => {
+    if (isRecording) recognition.start();
+  };
+}
+
+micBtn.addEventListener('click', () => {
+  if (!recognition) {
+    alert("Speech recording is not supported in this browser.");
+    return;
+  }
+  if (!isRecording) {
+    recognition.start();
+    isRecording = true;
+    recordingIndicator.style.display = 'inline-block';
+    micBtn.style.borderColor = 'red';
+  } else {
+    isRecording = false;
+    recognition.stop();
+    recordingIndicator.style.display = 'none';
+    micBtn.style.borderColor = '';
+  }
+});
+
+audioUpload.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  transcribeStatus.style.display = 'block';
+  transcribeStatus.innerText = 'Transcribing audio...';
+  
+  const formData = new FormData();
+  formData.append('audio', file);
+
+  try {
+    const res = await fetch('/api/transcribe', {
+      method: 'POST',
+      body: formData
+    });
+    const data = await res.json();
+    if (data.text) {
+      complaintDesc.value += (complaintDesc.value ? ' ' : '') + data.text;
+      transcribeStatus.innerText = 'Transcription successful.';
+    } else {
+      transcribeStatus.innerText = 'Could not transcribe.';
+    }
+  } catch(e) {
+    transcribeStatus.innerText = 'Transcription failed.';
+  }
+  setTimeout(() => { transcribeStatus.style.display = 'none'; }, 3000);
+});
+</script>
+
+<style>
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+</style>
+
 {% endblock %}

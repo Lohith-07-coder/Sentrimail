@@ -2,5 +2,11 @@ fastapi==0.111.0
 uvicorn[standard]==0.29.0
 python-multipart==0.0.9
 jinja2==3.1.4
-transformers==4.41.2
+transformers
 pymongo==4.8.0
+langdetect
+deep-translator
+openai-whisper
+apscheduler
+
+

@@ -23,6 +23,7 @@ _models_loaded = False
 _use_transformers = True
 _response_model = None
 _response_model_loaded = False
+_generative_pipeline = None
 
 
 NEGATIVE_KEYWORDS = [
@@ -201,7 +202,7 @@ def _infer_issue_type(text: str, category: str) -> str:
 
 
 def _load_models() -> None:
-    global _sentiment_pipeline, _emotion_pipeline, _models_loaded, _use_transformers
+    global _sentiment_pipeline, _emotion_pipeline, _generative_pipeline, _models_loaded, _use_transformers
     if _models_loaded:
         return
 
@@ -220,6 +221,11 @@ def _load_models() -> None:
             truncation=True,
             max_length=512,
         )
+        try:
+            _generative_pipeline = pipeline("text2text-generation", model="google/flan-t5-small")
+        except:
+            _generative_pipeline = None
+
         _use_transformers = True
         logger.info("Transformer models loaded.")
     except Exception as exc:
@@ -337,7 +343,31 @@ def _is_auto_resolvable(priority: str, text: str, sentiment: Dict[str, Any]) -> 
     return True
 
 
-def _generate_auto_user_response(username: str) -> str:
+def _generate_auto_user_response(
+    username: str,
+    text: str = "",
+    category: str = "other",
+    sentiment_score: float = 0.5,
+    original_language: str = "en"
+) -> str:
+    prompt = (
+        "System message:\n"
+        "You are a professional customer support AI. You represent an organization that takes every complaint seriously. "
+        "Always respond with empathy and give a specific, actionable solution. Never give vague or generic replies.\n\n"
+        "User message:\n"
+        f"A user submitted the following complaint. Complaint category: {category}. Sentiment score: {sentiment_score}. "
+        f"Priority: low. Original language: {original_language}. Complaint text (in English): {text}. "
+        f"Write a helpful, specific reply in {original_language} language. Keep it to 3 to 4 sentences."
+    )
+    
+    if _generative_pipeline:
+        try:
+            res = _generative_pipeline(prompt, max_length=150, do_sample=True, top_p=0.95)[0]['generated_text']
+            # We enforce translation back to the original language anyway via deep-translator in main.py 
+            return res.strip()
+        except:
+            pass
+
     return (
         f"Dear {username},\n\n"
         "Thanks for reporting this. We have automatically logged your issue and started basic remediation checks. "
@@ -459,7 +489,13 @@ def analyze_complaint(
         text=text,
         category=category,
     )
-    auto_response = (dataset_suggestion or _generate_auto_user_response(username)) if auto_resolvable else ""
+    auto_response = (dataset_suggestion or _generate_auto_user_response(
+        username=username, 
+        text=text, 
+        category=category, 
+        sentiment_score=sentiment["score"], 
+        original_language="en"
+    )) if auto_resolvable else ""
 
     return {
         "sentiment_label": sentiment["label"],

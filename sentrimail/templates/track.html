@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Track Complaint — SentriMail{% endblock %}
+
+{% block content %}
+<div class="fade-up" style="max-width: 600px; margin: 0 auto;">
+  <div class="section-header" style="text-align: center;">
+    <div>
+      <div class="section-title">Track Complaint Status</div>
+      <div class="section-sub">Enter your complaint tracking code below.</div>
+    </div>
+  </div>
+
+  <div class="card fade-up-1">
+    <form method="POST" action="/track">
+      <div class="form-group">
+        <label class="form-label">Tracking Code</label>
+        <input type="text" name="complaint_code" class="form-control" placeholder="SENT-YYYY-XXXX" required>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%">Search</button>
+    </form>
+  </div>
+
+  {% if error %}
+  <div class="alert alert-danger" style="margin-top: 20px;">
+    {{ error }}
+  </div>
+  {% endif %}
+
+  {% if complaint %}
+  <div class="card fade-up-2" style="margin-top:20px;">
+    <h3 style="margin-bottom:15px; font-family:'Syne',sans-serif;">Complaint Details</h3>
+    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+      <span style="color:var(--muted); font-size:12px;">Submitted On:</span>
+      <span class="mono">{{ complaint.created_at[:10] }}</span>
+    </div>
+    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+      <span style="color:var(--muted); font-size:12px;">Status:</span>
+      <span class="status-badge status-{{ complaint.status }}">
+        {{ complaint.status | replace('_', ' ') | title }}
+      </span>
+    </div>
+    <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
+      <span style="color:var(--muted); font-size:12px;">Priority:</span>
+      <span class="priority-badge priority-{{ complaint.priority }}">
+        {% if complaint.priority == 'CRITICAL' %}🔴{% elif complaint.priority == 'HIGH' %}🟠{% elif complaint.priority == 'MEDIUM' %}🟡{% else %}🟢{% endif %}
+        {{ complaint.priority }}
+      </span>
+    </div>
+
+    {% if complaint.admin_response %}
+    <div style="margin-top:20px; border-top: 1px solid var(--border); padding-top:15px;">
+      <span style="color:var(--muted); font-size:12px; display:block; margin-bottom:8px;">Response:</span>
+      <div style="background:var(--surface2); padding:12px; border-radius:8px; font-size:14px; color:var(--text);">
+        {{ complaint.admin_response }}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

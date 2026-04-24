@@ -52,32 +52,20 @@
     </div>
   </div>
 
-  <!-- Stats -->
-  <div class="stat-grid fade-up-1">
-    <div class="stat-card stat-blue">
-      <div class="stat-value">{{ stats.total }}</div>
-      <div class="stat-label">Total</div>
-    </div>
-    <div class="stat-card stat-rose">
-      <div class="stat-value">{{ stats.critical }}</div>
-      <div class="stat-label">Critical</div>
-    </div>
-    <div class="stat-card" style="border-top: 2px solid #f97316;">
-      <div class="stat-value">{{ stats.high }}</div>
-      <div class="stat-label">High</div>
-    </div>
-    <div class="stat-card stat-amber">
-      <div class="stat-value">{{ stats.medium }}</div>
-      <div class="stat-label">Medium</div>
-    </div>
-    <div class="stat-card stat-green">
-      <div class="stat-value">{{ stats.low }}</div>
-      <div class="stat-label">Low</div>
-    </div>
-    <div class="stat-card stat-purple">
-      <div class="stat-value">{{ stats.pending }}</div>
-      <div class="stat-label">Pending</div>
-    </div>
+  <!-- New Metric Stat Cards -->
+  <div class="stat-grid fade-up-1" id="dynamicStats">
+    <div class="stat-card stat-blue"><div class="stat-value" id="statTotal">--</div><div class="stat-label">Total Complaints</div></div>
+    <div class="stat-card stat-purple"><div class="stat-value" id="statPending">--</div><div class="stat-label">Pending Admin Review</div></div>
+    <div class="stat-card stat-green"><div class="stat-value" id="statResolved">--</div><div class="stat-label">Resolved Today</div></div>
+    <div class="stat-card stat-amber"><div class="stat-value" id="statTime">--</div><div class="stat-label">Avg Response Time (hrs)</div></div>
+  </div>
+
+  <!-- Charts -->
+  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 24px;" class="fade-up-2">
+    <div class="card"><canvas id="chartCategory"></canvas></div>
+    <div class="card"><canvas id="chartPriority"></canvas></div>
+    <div class="card"><canvas id="chartDaily"></canvas></div>
+    <div class="card"><canvas id="chartSentiment"></canvas></div>
   </div>
 
   <!-- Filter bar -->
@@ -89,6 +77,7 @@
     <button class="filter-btn" onclick="filterTable('LOW', this)">🟢 Low</button>
     <button class="filter-btn" onclick="filterTable('pending', this)" style="margin-left:auto">⏳ Pending</button>
     <button class="filter-btn" onclick="filterTable('resolved', this)">✅ Resolved</button>
+    <a href="/admin/export" class="filter-btn" style="text-decoration:none; display:inline-flex; align-items:center;">📥 Export CSV</a>
   </div>
 
   <!-- Table -->
@@ -101,6 +90,7 @@
             <th>ID</th>
             <th>Title</th>
             <th>User</th>
+            <th>Lang</th>
             <th>Category</th>
             <th>Sentiment</th>
             <th>Emotion</th>
@@ -116,8 +106,18 @@
               data-status="{{ c.status }}"
               onclick="window.location='/admin/complaint/{{ c.id }}'">
             <td><span class="mono" style="color:var(--blue)">#{{ c.id }}</span></td>
-            <td class="td-title" title="{{ c.title }}">{{ c.title }}</td>
+            <td class="td-title" title="{{ c.title }}">
+              {{ c.title }}
+              {% if c.get('keyword_escalated') %}
+              <span style="font-size:9px; background:#ef4444; color:white; padding:2px 4px; border-radius:4px; margin-left:4px;">AUTO-ESCALATED</span>
+              {% endif %}
+            </td>
             <td><span style="font-size:12px;color:var(--subtle)">{{ c.username }}</span></td>
+            <td>
+              <span style="font-size:10px;padding:2px 6px;border-radius:100px;background:var(--blue);color:white;font-weight:bold;text-transform:uppercase;">
+                {{ c.get('original_language', 'en') }}
+              </span>
+            </td>
             <td><span style="font-size:12px;color:var(--muted)">{{ c.category | title }}</span></td>
             <td>
               <span style="font-size:11px;font-family:'DM Mono',monospace;
@@ -171,6 +171,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
 function filterTable(filter, btn) {
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -186,5 +187,69 @@ function filterTable(filter, btn) {
     }
   });
 }
+
+document.addEventListener("DOMContentLoaded", async () => {
+    const res = await fetch("/api/dashboard-stats");
+    const data = await res.json();
+
+    // Stats
+    document.getElementById("statTotal").innerText = data.stats.total;
+    document.getElementById("statPending").innerText = data.stats.pending_admin;
+    document.getElementById("statResolved").innerText = data.stats.resolved_today;
+    document.getElementById("statTime").innerText = data.stats.avg_response_hours;
+
+    // Chart 1: Donut Category
+    new Chart(document.getElementById('chartCategory'), {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(data.category_counts).map(i=>i.toUpperCase()),
+            datasets: [{ data: Object.values(data.category_counts), backgroundColor: ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6'] }]
+        },
+        options: { responsive: true, plugins: { title: { display: true, text: 'Categories' } } }
+    });
+
+    // Chart 2: Priority Bar
+    new Chart(document.getElementById('chartPriority'), {
+        type: 'bar',
+        data: {
+            labels: ['Critical', 'High', 'Medium', 'Low'],
+            datasets: [{
+                label: 'Complaints',
+                data: [data.priority_counts.critical, data.priority_counts.high, data.priority_counts.medium, data.priority_counts.low],
+                backgroundColor: ['#ef4444', '#f97316', '#eab308', '#22c55e']
+            }]
+        },
+        options: { responsive: true, plugins: { title: { display: true, text: 'Priority Distribution' }, legend: {display:false} } }
+    });
+
+    // Chart 3: Line Chart Daily
+    new Chart(document.getElementById('chartDaily'), {
+        type: 'line',
+        data: {
+            labels: data.daily_counts.map(d => d.date),
+            datasets: [{ label: 'Complaints', data: data.daily_counts.map(d => d.count), borderColor: '#3b82f6', tension: 0.1 }]
+        },
+        options: { responsive: true, plugins: { title: { display: true, text: 'Last 30 Days' }, legend: {display:false} } }
+    });
+
+    // Chart 4: Stacked Bar Sentiment
+    const sentimentCats = Object.keys(data.sentiment_by_category);
+    const pos = sentimentCats.map(c => data.sentiment_by_category[c].positive || 0);
+    const neu = sentimentCats.map(c => data.sentiment_by_category[c].neutral || 0);
+    const neg = sentimentCats.map(c => data.sentiment_by_category[c].negative || 0);
+
+    new Chart(document.getElementById('chartSentiment'), {
+        type: 'bar',
+        data: {
+            labels: sentimentCats.map(i=>i.toUpperCase()),
+            datasets: [
+                { label: 'Positive', data: pos, backgroundColor: '#10b981' },
+                { label: 'Neutral', data: neu, backgroundColor: '#94a3b8' },
+                { label: 'Negative', data: neg, backgroundColor: '#ef4444' }
+            ]
+        },
+        options: { responsive: true, scales: { x: { stacked: true }, y: { stacked: true } }, plugins: { title: { display: true, text: 'Sentiment by Category' } } }
+    });
+});
 </script>
 {% endblock %}

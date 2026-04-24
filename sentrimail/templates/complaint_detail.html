@@ -84,10 +84,18 @@
     </div>
     <h1 style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;letter-spacing:-0.01em;margin-bottom:6px">
       {{ complaint.title }}
+      {% if complaint.get('keyword_escalated') %}
+      <span style="font-size:12px; background:#ef4444; color:white; padding:4px 8px; border-radius:6px; margin-left:8px; vertical-align:middle;">AUTO-ESCALATED</span>
+      {% endif %}
     </h1>
     <div style="font-size:12px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap">
       <span>👤 {{ complaint.username }}</span>
       {% if complaint.email %}<span>✉️ {{ complaint.email }}</span>{% endif %}
+      <span>
+        <span style="font-size:10px;padding:2px 6px;border-radius:100px;background:var(--blue);color:white;font-weight:bold;text-transform:uppercase;margin-right:4px;">
+          {{ complaint.get('original_language', 'en') }}
+        </span>
+      </span>
       <span>📂 {{ complaint.category | title }}</span>
       <span>📅 {{ complaint.created_at[:10] }}</span>
     </div>
@@ -100,6 +108,13 @@
         <div class="detail-section-title">Complaint Description</div>
         <div class="complaint-body">{{ complaint.description }}</div>
       </div>
+
+      {% if complaint.original_language and complaint.original_language != "en" and complaint.original_text %}
+      <div class="detail-section">
+        <div class="detail-section-title">Original Complaint Text ({{ complaint.original_language | upper }})</div>
+        <div class="complaint-body text-box" style="background:var(--surface)">{{ complaint.original_text }}</div>
+      </div>
+      {% endif %}
 
       <!-- Status update -->
       <div class="detail-section card">
