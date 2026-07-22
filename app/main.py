@@ -6,6 +6,7 @@ and modular routers.
 """
 
 import os
+from pathlib import Path
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,8 +36,8 @@ app.add_middleware(
 )
 
 # Mount static files
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STATIC_DIR = os.path.join(BASE_DIR, "static")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+STATIC_DIR = PROJECT_ROOT / "static"
 os.makedirs(STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
