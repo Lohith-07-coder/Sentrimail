@@ -1,11 +1,11 @@
 """
-SentriMail AI Engine
---------------------
+SentriMail AI Service
+---------------------
 Hybrid analysis pipeline:
 - Sentiment + emotion (transformer when available, otherwise rule-based)
 - Priority scoring
 - Auto-resolvable decision for LOW/simple complaints
-- Admin suggested response for non-auto cases
+- Admin suggested response generation
 """
 
 import logging
@@ -66,7 +66,7 @@ URGENT_TRIGGERS = {
     "server down", "production down", "data loss", "corrupted", "outage",
 }
 
-MODEL_PATH = Path(__file__).resolve().parents[1] / "data" / "response_model.json"
+MODEL_PATH = Path(__file__).resolve().parents[2] / "data" / "response_model.json"
 _token_pattern = re.compile(r"[a-z0-9']+")
 
 
@@ -162,7 +162,6 @@ def _predict_response_from_dataset(
             best_score = score
             best_response = str(sample.get("response", "")).strip()
 
-    # Avoid using weakly similar examples.
     if best_score < 0.12 or not best_response:
         return ""
 
@@ -331,12 +330,10 @@ def _is_auto_resolvable(priority: str, text: str, sentiment: Dict[str, Any]) -> 
     if any(kw in text_lower for kw in URGENT_TRIGGERS):
         return False
 
-    # If explicitly high-risk/legal/safety terms exist, keep human in loop.
     hard_blockers = ["refund", "chargeback", "legal", "fraud", "threat", "injury", "security breach", "data leak"]
     if any(term in text_lower for term in hard_blockers):
         return False
 
-    # Very low-confidence negative sentiment should still go to admin.
     if sentiment.get("label") == "NEGATIVE" and sentiment.get("score", 0) > 0.75:
         return False
 
@@ -363,7 +360,6 @@ def _generate_auto_user_response(
     if _generative_pipeline:
         try:
             res = _generative_pipeline(prompt, max_length=150, do_sample=True, top_p=0.95)[0]['generated_text']
-            # We enforce translation back to the original language anyway via deep-translator in main.py 
             return res.strip()
         except:
             pass
@@ -508,7 +504,6 @@ def analyze_complaint(
         "auto_resolution_reason": "Low priority and safe to auto-handle." if auto_resolvable else "Requires admin review.",
         "user_auto_response": auto_response,
         "admin_suggested_response": admin_suggestion,
-        # Backward-compatible key consumed by existing templates.
         "ai_suggested_response": admin_suggestion if not auto_resolvable else auto_response,
         "model_used": "transformer" if _use_transformers else "rule-based",
         "response_source": "dataset" if dataset_suggestion else "template",
