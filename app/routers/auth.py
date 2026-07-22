@@ -8,7 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-import os
+from pathlib import Path
 
 from app.services.auth_service import auth_service
 from app.repositories.user_repository import user_repository
@@ -16,8 +16,8 @@ from app.schemas.user import LoginRequest, RegisterRequest
 
 router = APIRouter(tags=["Authentication"])
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+templates = Jinja2Templates(directory=PROJECT_ROOT / "templates")
 
 
 @router.get("/", response_class=HTMLResponse)

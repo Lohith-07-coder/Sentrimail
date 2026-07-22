@@ -6,7 +6,7 @@ Handles admin dashboard, complaint review, status and response updates, user man
 
 import csv
 import io
-import os
+from pathlib import Path
 from typing import Annotated
 from deep_translator import GoogleTranslator
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
@@ -21,8 +21,8 @@ from app.schemas.admin import ComplaintResponseUpdateRequest, ComplaintStatusUpd
 
 router = APIRouter(tags=["Admin Portal"])
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+templates = Jinja2Templates(directory=PROJECT_ROOT / "templates")
 
 
 @router.get("/admin/dashboard", response_class=HTMLResponse)

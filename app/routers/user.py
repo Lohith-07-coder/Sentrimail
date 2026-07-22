@@ -8,7 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-import os
+from pathlib import Path
 
 from app.services.auth_service import auth_service
 from app.repositories.complaint_repository import complaint_repository
@@ -18,8 +18,8 @@ from app.schemas.complaint import ComplaintCreateRequest, ComplaintTrackingReque
 
 router = APIRouter(tags=["User Portal"])
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+templates = Jinja2Templates(directory=PROJECT_ROOT / "templates")
 
 
 @router.get("/user/dashboard", response_class=HTMLResponse)
