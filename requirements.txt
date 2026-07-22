@@ -8,5 +8,7 @@ langdetect
 deep-translator
 openai-whisper
 apscheduler
+pydantic-settings==2.6.1
+PyJWT==2.10.1
 
 

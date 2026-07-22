@@ -15,7 +15,7 @@ MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME", "sentrimail")
 _client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
 _mongo_db = _client[MONGODB_DB_NAME]
 
-_DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+_DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 _DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 

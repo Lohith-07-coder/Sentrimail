@@ -4,7 +4,7 @@ import sys
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PROJECT_ROOT)
 
-from app.mongodb import db, init_mongodb
+from app.core.database import db, init_mongodb
 
 def migrate():
     print("Starting database migration for SentriMail...")
