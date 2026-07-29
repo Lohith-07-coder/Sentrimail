@@ -4,7 +4,6 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111.0-009688.svg)](https://fastapi.tiangolo.com/)
 [![HuggingFace](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Transformers-yellow.svg)](https://huggingface.co/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-4.8.0-47A248.svg)](https://www.mongodb.com/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Build & Test](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/test_app.py)
 
 SentriMail is an enterprise-grade, role-based complaint management and triage platform powered by a hybrid artificial intelligence engine. It combines real-time NLP analysis (sentiment detection, emotion recognition, root-cause categorization), automated multi-language translation, speech-to-text audio transcription, mathematical priority scoring, and auto-resolution workflows.
@@ -34,9 +33,8 @@ SentriMail is an enterprise-grade, role-based complaint management and triage pl
 20. [Engineering Challenges](#20-engineering-challenges)
 21. [Lessons Learned](#21-lessons-learned)
 22. [Contributing](#22-contributing)
-23. [License](#23-license)
-24. [Acknowledgements](#24-acknowledgements)
-25. [Contact & Support](#25-contact--support)
+23. [Acknowledgements](#24-acknowledgements)
+24. [Contact & Support](#25-contact--support)
 
 ---
 
@@ -706,15 +704,9 @@ Contributions are welcome! Please follow these steps:
 4. Push to the branch (`git push origin feature/AmazingFeature`).
 5. Open a Pull Request.
 
----
 
-## 23. License
 
-Distributed under the MIT License. See `LICENSE` for more information.
-
----
-
-## 24. Acknowledgements
+## 23. Acknowledgements
 
 - [FastAPI](https://fastapi.tiangolo.com/)
 - [HuggingFace Transformers](https://huggingface.co/docs/transformers/)
