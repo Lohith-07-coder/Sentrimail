@@ -715,7 +715,7 @@ Contributions are welcome! Please follow these steps:
 
 ---
 
-## 25. Contact & Support
+## 24. Contact & Support
 
 - **Repository Owner**: Lohith
 - **GitHub**: [@Lohith-07-coder](https://github.com/Lohith-07-coder)
