@@ -4,12 +4,13 @@ SentriMail Transcription Service
 Audio transcription service using OpenAI Whisper.
 """
 
-import os
-import tempfile
-import whisper
-
-
 async def transcribe_audio_file(audio_bytes: bytes) -> str:
+    try:
+        import whisper
+    except Exception as e:
+        print(f"Whisper availability check failed: {e}")
+        return ""
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
         tmp.write(audio_bytes)
         tmp_path = tmp.name
