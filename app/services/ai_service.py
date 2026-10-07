@@ -517,21 +517,31 @@ def analyze_complaint(
     priority_data["priority_color"] = priority_colors[priority_data["priority"]]
     auto_resolvable = _is_auto_resolvable(priority_data["priority"], analysis_text, sentiment)
 
-    dataset_suggestion = _predict_response_from_dataset(
+    from app.services.response_intelligence import generate_grounded_response
+    
+    grounded_res = generate_grounded_response(
         text=analysis_text,
         username=username,
         category=inferred_category,
         priority=priority_data["priority"],
+        language=language
     )
+    
+    dataset_suggestion = grounded_res["response"]
     if dataset_suggestion and priority_data["priority"] in {"HIGH", "CRITICAL"} and _is_generic_dataset_response(dataset_suggestion):
         dataset_suggestion = ""
-
+        
     admin_suggestion = dataset_suggestion or _generate_admin_suggestion(
         priority=priority_data["priority"],
         username=username,
         text=analysis_text,
         category=inferred_category,
     )
+    
+    # Require human review if confidence is low
+    if grounded_res.get("human_review_required"):
+        auto_resolvable = False
+        
     auto_response = (dataset_suggestion or _generate_auto_user_response(
         username=username, 
         text=analysis_text, 
@@ -557,11 +567,12 @@ def analyze_complaint(
         "category_indicators": category_terms,
         "root_cause_summary": _generate_root_cause(inferred_category, emotion["label"].lower()),
         "auto_resolvable": auto_resolvable,
-        "auto_resolution_reason": "Low priority and safe to auto-handle." if auto_resolvable else "Requires admin review.",
+        "auto_resolution_reason": "Low priority and safe to auto-handle." if auto_resolvable else ("Low retrieval confidence requires review." if grounded_res.get("human_review_required") else "Requires admin review."),
         "user_auto_response": auto_response,
         "admin_suggested_response": admin_suggestion,
         "ai_suggested_response": admin_suggestion if not auto_resolvable else auto_response,
         "model_used": "transformer" if _use_transformers else "rule-based",
-        "response_source": "dataset" if dataset_suggestion else "template",
+        "response_source": grounded_res.get("source", "template") if dataset_suggestion else "template",
+        "response_confidence": grounded_res.get("confidence", 0.0),
         "reference_id": complaint_id,
     }
