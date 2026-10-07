@@ -48,7 +48,8 @@ data:
   test_split: 0.10
   random_seed: 42
   dataset_flags:
-    use_kaggle: true
+    # Reads manually downloaded local complaint CSV files; no Kaggle API exists.
+    use_local_complaint_dataset: true
     use_cfpb: true
     use_bitext: true
     use_banking77: true

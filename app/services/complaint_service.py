@@ -59,6 +59,12 @@ def merge_or_backfill_analysis(complaint: dict) -> dict:
     merged["emotion_label"] = computed.get("emotion_label", "Neutral") if force_refresh else (complaint.get("emotion_label") or computed.get("emotion_label", "Neutral"))
     merged["emotion_score"] = computed.get("emotion_score", 0) if force_refresh else complaint.get("emotion_score", computed.get("emotion_score", 0))
     merged["root_cause_summary"] = complaint.get("root_cause_summary") or computed.get("root_cause_summary", "")
+    merged["category"] = (
+        computed.get("category", "other")
+        if force_refresh or complaint.get("category") in (None, "", "other")
+        else complaint.get("category")
+    )
+    merged["issue"] = complaint.get("issue") or computed.get("issue", "general")
     merged["admin_suggested_response"] = (
         complaint.get("admin_suggested_response")
         or complaint.get("ai_suggested_response")
@@ -83,6 +89,8 @@ def merge_or_backfill_analysis(complaint: dict) -> dict:
             "emotion_label": merged.get("emotion_label", "Neutral"),
             "emotion_score": merged.get("emotion_score", 0),
             "root_cause_summary": merged.get("root_cause_summary", ""),
+            "category": merged.get("category", "other"),
+            "issue": merged.get("issue", "general"),
             "admin_suggested_response": merged.get("admin_suggested_response", ""),
             "ai_suggested_response": merged.get("ai_suggested_response", ""),
             "model_used": merged.get("model_used", "rule-based"),
@@ -100,7 +108,7 @@ def escalate_complaints() -> None:
     complaint_repository.escalate_by_thresholds(threshold_24, threshold_48)
 
 
-def process_complaint_submission(username: str, email: str, title: str, description: str, language: str | None = None) -> tuple[dict, dict, str | None, bool]:
+def process_complaint_submission(username: str, email: str, title: str, description: str, language: str | None = None, category: str = "other") -> tuple[dict, dict, str | None, bool]:
     original_text = description
     detected_lang = language
 
@@ -117,7 +125,13 @@ def process_complaint_submission(username: str, email: str, title: str, descript
         except Exception as e:
             print(f"Translation failed: {e}")
 
-    analysis = analyze_complaint(translated_text, category="other", username=username)
+    history = complaint_repository.history_summary(username)
+    analysis = analyze_complaint(
+        translated_text,
+        category=category,
+        username=username,
+        history=history,
+    )
     priority = analysis.get("priority", "LOW").upper()
 
     keywords = ["legal", "police", "harassment", "abuse", "threat", "court", "violence", "urgent", "emergency", "lawsuit", "assault"]
@@ -130,7 +144,9 @@ def process_complaint_submission(username: str, email: str, title: str, descript
 
     complaint_data = {
         "title": title,
-        "category": "other",
+        "category": analysis.get("category", "other"),
+        "issue": analysis.get("issue", "general"),
+        "priority_history": history,
         "description": translated_text,
         "original_text": original_text,
         "original_language": detected_lang,

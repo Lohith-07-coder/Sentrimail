@@ -46,11 +46,13 @@ def admin_dashboard(request: Request):
     for c in complaints:
         normalized_complaints.append({
             "id": c.get("id"),
+            "complaint_code": c.get("complaint_code"),
             "title": c.get("title", "Untitled"),
             "priority": c.get("priority", "LOW"),
             "status": c.get("status", "pending"),
             "created_at": c.get("created_at", "N/A"),
-            "description": c.get("description", "")
+            "description": c.get("description", ""),
+            "keyword_escalated": c.get("keyword_escalated", False)
         })
 
     complaints_sorted = sorted(

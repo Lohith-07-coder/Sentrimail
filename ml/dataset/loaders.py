@@ -3,7 +3,7 @@ SentriMail Dataset Loaders Module
 ---------------------------------
 Modular data loaders for multi-task model training.
 Supports:
-- Local Kaggle Complaint-Response dataset (with dynamic column discovery)
+- Manually downloaded local complaint-response datasets (with dynamic column discovery)
 - CFPB Financial Complaints
 - Bitext Customer Support
 - Banking77 Intent Classification
@@ -23,19 +23,25 @@ from ml.dataset.schema import UnifiedSample
 logger = logging.getLogger(__name__)
 
 
-def load_kaggle_complaint_dataset(data_dir: Path) -> List[UnifiedSample]:
+def load_local_complaint_dataset(data_dir: Path) -> List[UnifiedSample]:
     """
-    Inspects and loads Kaggle customer complaint-response dataset files (.csv or .json)
-    with dynamic column detection.
+    Inspects manually downloaded complaint-response CSV files with dynamic
+    column detection. This function does not use a Kaggle client or API.
     """
     samples: List[UnifiedSample] = []
-    possible_paths = list(data_dir.glob("*kaggle*")) + list(data_dir.glob("*.csv")) + list(data_dir.glob("*.json"))
+    specialised_files = {
+        "cfpb_complaints.csv", "bitext_customer_support.csv", "banking77.csv",
+        "goemotions.csv", "spam_abuse.csv",
+    }
+    possible_paths = [
+        path for path in data_dir.glob("*.csv") if path.name not in specialised_files
+    ]
     
     for path in possible_paths:
         if path.name.endswith(".csv"):
             try:
                 df = pd.read_csv(path)
-                logger.info("Inspecting Kaggle CSV columns in %s: %s", path.name, list(df.columns))
+                logger.info("Inspecting local complaint CSV columns in %s: %s", path.name, list(df.columns))
                 
                 # Column resolution heuristic
                 text_col = next((c for c in df.columns if c.lower() in ["text", "complaint", "description", "issue_description", "narrative"]), None)
@@ -56,7 +62,7 @@ def load_kaggle_complaint_dataset(data_dir: Path) -> List[UnifiedSample]:
                     sent = str(row[sent_col]).upper().strip() if sent_col and pd.notna(row[sent_col]) else "NEUTRAL"
                     
                     samples.append(UnifiedSample(
-                        id=f"kaggle_{path.stem}_{idx}",
+                        id=f"local_{path.stem}_{idx}",
                         text=txt,
                         language="en",
                         message_type="complaint",
@@ -67,9 +73,14 @@ def load_kaggle_complaint_dataset(data_dir: Path) -> List[UnifiedSample]:
                         response=resp
                     ))
             except Exception as e:
-                logger.warning("Error loading Kaggle CSV %s: %s", path, e)
+                logger.warning("Error loading local complaint CSV %s: %s", path, e)
                 
     return samples
+
+
+# Backward-compatible import name. It only reads local files and performs no
+# network/API operation; new callers should use load_local_complaint_dataset.
+load_kaggle_complaint_dataset = load_local_complaint_dataset
 
 
 def load_cfpb_complaints(data_dir: Path) -> List[UnifiedSample]:
@@ -247,10 +258,10 @@ def load_all_datasets(data_dir: Path, flags: Dict[str, bool]) -> List[UnifiedSam
     """
     all_samples: List[UnifiedSample] = []
 
-    if flags.get("use_kaggle", True):
-        kaggle = load_kaggle_complaint_dataset(data_dir)
-        logger.info("Loaded %d Kaggle samples", len(kaggle))
-        all_samples.extend(kaggle)
+    if flags.get("use_local_complaint_dataset", True):
+        local_complaints = load_local_complaint_dataset(data_dir)
+        logger.info("Loaded %d local complaint samples", len(local_complaints))
+        all_samples.extend(local_complaints)
 
     if flags.get("use_cfpb", True):
         cfpb = load_cfpb_complaints(data_dir)

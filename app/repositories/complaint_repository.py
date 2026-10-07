@@ -27,6 +27,18 @@ class ComplaintRepository:
             )
         )
 
+    def history_summary(self, username: str) -> dict[str, int]:
+        """Return only real persisted complaint-history signals for priority scoring."""
+        complaints = self.list_for_user(username)
+        unresolved_statuses = {"pending", "pending_admin", "in_progress"}
+        return {
+            "previous_complaints": len(complaints),
+            "unresolved_complaints": sum(
+                complaint.get("status") in unresolved_statuses
+                for complaint in complaints
+            ),
+        }
+
     def find_by_id(self, complaint_id: str) -> Optional[dict[str, Any]]:
         return db.complaints.find_one({"id": complaint_id}, {"_id": 0})
 

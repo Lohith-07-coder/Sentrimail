@@ -174,10 +174,15 @@
           </td>
 
           <td data-label="Subject" class="td-title" title="{{ c.title }}">
-            {{ c.title }}
-            {% if c.get('keyword_escalated') %}
-            <span class="badge priority-CRITICAL" style="font-size:9px; margin-left:4px;">KEYWORD ESCALATED</span>
-            {% endif %}
+            <div style="font-weight: 500;">
+              {{ c.title }}
+              {% if c.get('keyword_escalated') %}
+              <span class="badge priority-CRITICAL" style="font-size:9px; margin-left:4px;">KEYWORD ESCALATED</span>
+              {% endif %}
+            </div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px;" title="{{ c.description }}">
+              {{ c.description }}
+            </div>
           </td>
 
           <td data-label="Priority">
@@ -242,6 +247,10 @@ function filterAdminTable(filter, btn) {
       row.style.display = '';
     } else if (['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].includes(filter)) {
       row.style.display = priority === filter ? '' : 'none';
+    } else if (filter === 'pending') {
+      row.style.display = (status === 'pending' || status === 'pending_admin') ? '' : 'none';
+    } else if (filter === 'resolved') {
+      row.style.display = (status === 'resolved' || status === 'auto_replied') ? '' : 'none';
     } else {
       row.style.display = status === filter ? '' : 'none';
     }

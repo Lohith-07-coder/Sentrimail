@@ -33,8 +33,6 @@ class Settings(BaseSettings):
     mail_password: str | None = None
     mail_default_sender: str = "noreply@sentrimail.com"
 
-    openai_api_key: str | None = None
-
     # Multi-task model and remote inference configuration
     use_multitask_model: bool = False
     multitask_model_name_or_path: str = "google/flan-t5-base"

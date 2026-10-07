@@ -15,6 +15,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict
 
+from app.core.priority import calculate_priority
+
 logger = logging.getLogger(__name__)
 
 _sentiment_pipeline = None
@@ -58,12 +60,6 @@ CATEGORY_ROOT_CAUSES = {
     "product": "Likely caused by product quality, mismatch, or performance issues.",
     "refund": "Likely caused by refund delay, policy confusion, or unresolved payment reversal.",
     "other": "Likely caused by cross-functional service/process issues that need deeper triage.",
-}
-
-URGENT_TRIGGERS = {
-    "urgent", "immediately", "asap", "emergency", "legal action", "lawsuit",
-    "police", "critical", "danger", "injury", "health", "fraud", "stolen",
-    "server down", "production down", "data loss", "corrupted", "outage",
 }
 
 MODEL_PATH = Path(__file__).resolve().parents[2] / "data" / "response_model.json"
@@ -200,6 +196,35 @@ def _infer_issue_type(text: str, category: str) -> str:
     return "general"
 
 
+def infer_category_and_issue(text: str, category: str = "other") -> tuple[str, str, list[str]]:
+    """Infer a transparent keyword category only when no upstream category exists."""
+    supplied_category = (category or "other").lower()
+    if supplied_category != "other":
+        return supplied_category, _infer_issue_type(text, supplied_category), []
+
+    lower = (text or "").lower()
+    # Refund/chargeback requests have a distinct operational workflow and take
+    # precedence when they co-occur with general billing words.
+    refund_terms = [term for term in ("refund", "chargeback", "reversal") if term in lower]
+    if refund_terms:
+        return "refund", _infer_issue_type(text, "refund"), refund_terms
+    category_terms = {
+        "billing": ["charged", "charge", "payment", "invoice", "billing", "subscription"],
+        "technical": ["crash", "error", "bug", "outage", "server", "down", "data loss"],
+        "delivery": ["delivery", "package", "parcel", "shipment", "courier", "tracking"],
+        "customer_service": ["support", "agent", "representative", "no response", "rude"],
+        "product": ["defective", "broken", "product", "device", "quality"],
+    }
+    matches = {
+        name: [term for term in terms if term in lower]
+        for name, terms in category_terms.items()
+    }
+    best_category, terms = max(matches.items(), key=lambda item: len(item[1]))
+    if not terms:
+        return "other", "general", []
+    return best_category, _infer_issue_type(text, best_category), terms
+
+
 def _load_models() -> None:
     global _sentiment_pipeline, _emotion_pipeline, _generative_pipeline, _models_loaded, _use_transformers
     if _models_loaded:
@@ -260,57 +285,6 @@ def _rule_based_emotion(text: str) -> Dict[str, Any]:
     return {"label": best, "score": confidence}
 
 
-def _compute_priority(sentiment: Dict[str, Any], emotion: Dict[str, Any], text: str) -> Dict[str, Any]:
-    sentiment_label = sentiment["label"]
-    sentiment_score = sentiment["score"]
-    emotion_label = emotion["label"].lower()
-    emotion_score = emotion["score"]
-
-    high_intensity_emotions = {"anger", "fear", "disgust"}
-    urgency_boost = any(kw in text.lower() for kw in URGENT_TRIGGERS)
-
-    score = 0
-    if sentiment_label == "NEGATIVE":
-        score += int(sentiment_score * 40)
-    elif sentiment_label == "NEUTRAL":
-        score += 10
-
-    if emotion_label in high_intensity_emotions:
-        score += int(emotion_score * 40)
-    elif emotion_label in {"sadness", "surprise"}:
-        score += int(emotion_score * 20)
-
-    if urgency_boost:
-        score += 20
-
-    if len(text.split()) > 100:
-        score += 5
-
-    if score >= 75:
-        priority = "CRITICAL"
-        priority_color = "#ef4444"
-        priority_desc = "Immediate attention required."
-    elif score >= 50:
-        priority = "HIGH"
-        priority_color = "#f97316"
-        priority_desc = "Elevated concern; prioritize human response."
-    elif score >= 25:
-        priority = "MEDIUM"
-        priority_color = "#eab308"
-        priority_desc = "Moderate concern; review and respond."
-    else:
-        priority = "LOW"
-        priority_color = "#22c55e"
-        priority_desc = "Low urgency; can be auto-handled if clearly actionable."
-
-    return {
-        "priority": priority,
-        "priority_color": priority_color,
-        "priority_score": score,
-        "priority_description": priority_desc,
-    }
-
-
 def _generate_root_cause(category: str, emotion_label: str) -> str:
     base = CATEGORY_ROOT_CAUSES.get((category or "other").lower(), CATEGORY_ROOT_CAUSES["other"])
     if emotion_label == "fear":
@@ -327,7 +301,8 @@ def _is_auto_resolvable(priority: str, text: str, sentiment: Dict[str, Any]) -> 
         return False
 
     text_lower = text.lower()
-    if any(kw in text_lower for kw in URGENT_TRIGGERS):
+    from app.core.priority import detect_urgency
+    if any(detect_urgency(text).values()):
         return False
 
     hard_blockers = ["refund", "chargeback", "legal", "fraud", "threat", "injury", "security breach", "data leak"]
@@ -446,6 +421,9 @@ def analyze_complaint(
     category: str = "other",
     username: str = "Customer",
     complaint_id: str = "N/A",
+    history: dict[str, int] | None = None,
+    created_at: str | None = None,
+    status: str | None = None,
 ) -> Dict[str, Any]:
     _load_models()
 
@@ -467,13 +445,23 @@ def analyze_complaint(
     else:
         emotion = _rule_based_emotion(text)
 
-    priority_data = _compute_priority(sentiment, emotion, text)
+    inferred_category, issue, category_terms = infer_category_and_issue(text, category)
+    priority_data = calculate_priority(
+        sentiment_label=sentiment["label"], sentiment_score=sentiment["score"],
+        emotion_label=emotion["label"], emotion_score=emotion["score"], text=text,
+        category=inferred_category, issue=issue, history=history,
+        created_at=created_at, status=status,
+    )
+    priority_colors = {
+        "CRITICAL": "#ef4444", "HIGH": "#f97316", "MEDIUM": "#eab308", "LOW": "#22c55e",
+    }
+    priority_data["priority_color"] = priority_colors[priority_data["priority"]]
     auto_resolvable = _is_auto_resolvable(priority_data["priority"], text, sentiment)
 
     dataset_suggestion = _predict_response_from_dataset(
         text=text,
         username=username,
-        category=category,
+        category=inferred_category,
         priority=priority_data["priority"],
     )
     if dataset_suggestion and priority_data["priority"] in {"HIGH", "CRITICAL"} and _is_generic_dataset_response(dataset_suggestion):
@@ -483,12 +471,12 @@ def analyze_complaint(
         priority=priority_data["priority"],
         username=username,
         text=text,
-        category=category,
+        category=inferred_category,
     )
     auto_response = (dataset_suggestion or _generate_auto_user_response(
         username=username, 
         text=text, 
-        category=category, 
+        category=inferred_category,
         sentiment_score=sentiment["score"], 
         original_language="en"
     )) if auto_resolvable else ""
@@ -499,7 +487,10 @@ def analyze_complaint(
         "emotion_label": emotion["label"].capitalize(),
         "emotion_score": emotion["score"],
         **priority_data,
-        "root_cause_summary": _generate_root_cause(category, emotion["label"].lower()),
+        "category": inferred_category,
+        "issue": issue,
+        "category_indicators": category_terms,
+        "root_cause_summary": _generate_root_cause(inferred_category, emotion["label"].lower()),
         "auto_resolvable": auto_resolvable,
         "auto_resolution_reason": "Low priority and safe to auto-handle." if auto_resolvable else "Requires admin review.",
         "user_auto_response": auto_response,

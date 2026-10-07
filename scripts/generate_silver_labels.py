@@ -2,7 +2,7 @@
 scripts/generate_silver_labels.py
 ----------------------------------
 Fully local, offline silver root-cause label generator for SentriMail.
-No external API keys or network calls required.
+No external API keys or network calls are permitted.
 
 Features
 --------
@@ -10,24 +10,25 @@ Features
    Each bucket carries several paraphrase variants; one is chosen at
    random per sample to maximise training diversity.
 
-2. --use-local-llm  flag:  loads a local Hugging Face text2text / causal
-   instruct model (e.g. Qwen/Qwen2.5-1.5B-Instruct or google/flan-t5-large)
-   fully offline and appends LLM-generated variants to the pool.
-   Pass --local-model <name-or-path> to override the default.
+2. --use-local-llm flag: loads a previously downloaded local Hugging Face
+   text2text / causal instruct model exactly once.  It always uses
+   ``local_files_only=True`` and therefore never downloads a model.
 
-3. Exports exactly 200 random samples (or all, if fewer exist) to
-   data/silver_labels_sample_review.csv for manual spot-check.
+3. Exports exactly 200 random samples by default.  It fails clearly when the
+   selected source has fewer samples instead of silently creating a smaller
+   review set.
 
-4. Results are cached to data/silver_labels_cache.json so re-runs are
-   incremental and idempotent.
+4. Template and LLM labels use separate method-aware caches so re-runs are
+   incremental without mixing generation methods.
 
 Usage
 -----
   # Template-only (zero dependencies beyond pandas):
   python scripts/generate_silver_labels.py
 
-  # With local LLM (flan-t5-large, downloads once to HF cache):
-  python scripts/generate_silver_labels.py --use-local-llm
+  # With a model already present in the local Hugging Face cache:
+  python scripts/generate_silver_labels.py --use-local-llm \
+      --local-model /path/to/local-model
 
   # With a locally-downloaded Qwen instruct model:
   python scripts/generate_silver_labels.py --use-local-llm \\
@@ -59,6 +60,7 @@ import random
 import argparse
 import logging
 import textwrap
+import hashlib
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -77,9 +79,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ── File paths ────────────────────────────────────────────────────────────────
-RAW_DATA_DIR   = PROJECT_ROOT / "data" / "raw"
-CACHE_FILE     = PROJECT_ROOT / "data" / "silver_labels_cache.json"
-DEFAULT_CSV    = PROJECT_ROOT / "data" / "silver_labels_sample_review.csv"
+RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
+TEMPLATE_CACHE_FILE = PROJECT_ROOT / "data" / "silver_labels_template_cache.json"
+LLM_CACHE_FILE = PROJECT_ROOT / "data" / "silver_labels_llm_cache.json"
+DEFAULT_CSV = PROJECT_ROOT / "data" / "silver_labels_sample_review.csv"
 
 # ── Template map: (category, issue) → [paraphrase variants] ──────────────────
 # Each key is a (category, issue) tuple matching the UnifiedSample schema.
@@ -233,32 +236,56 @@ def generate_template_label(category: str, issue: str) -> str:
 # Optional: local Hugging Face instruct model
 # ─────────────────────────────────────────────────────────────────────────────
 
+def load_local_llm_pipeline(model_name: str):
+    """Load one already-local Hugging Face pipeline without network access."""
+    try:
+        from transformers import (  # noqa: WPS433
+            AutoConfig,
+            AutoModelForCausalLM,
+            AutoModelForSeq2SeqLM,
+            AutoTokenizer,
+            pipeline,
+        )
+    except ImportError as exc:
+        raise RuntimeError("transformers is required for --use-local-llm") from exc
+
+    try:
+        cfg = AutoConfig.from_pretrained(model_name, local_files_only=True)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Local model '{model_name}' is unavailable. Download it separately or "
+            "provide a local path; this command will not download models."
+        ) from exc
+
+    model_type = getattr(cfg, "model_type", "").lower()
+    is_causal = any(
+        kind in model_type
+        for kind in ("qwen", "llama", "gpt", "bloom", "mistral", "falcon")
+    )
+    task = "text-generation" if is_causal else "text2text-generation"
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
+        model_class = AutoModelForCausalLM if is_causal else AutoModelForSeq2SeqLM
+        model = model_class.from_pretrained(model_name, local_files_only=True)
+        return pipeline(task, model=model, tokenizer=tokenizer), is_causal
+    except Exception as exc:
+        raise RuntimeError(f"Unable to load local model '{model_name}': {exc}") from exc
+
+
 def generate_llm_label(
     text: str,
     category: str,
     issue: str,
-    model_name: str = "google/flan-t5-large",
+    pipeline_instance,
+    is_causal: bool,
 ) -> str:
     """
-    Generate a root-cause sentence using a local HF model (no network call
-    after first download).  Falls back to the template pool on any error.
+    Generate one root-cause sentence from a preloaded local model.
 
-    For text2text models (T5, BART, etc.) the pipeline type is
-    'text2text-generation'.  For causal / instruct models (Qwen, Llama, etc.)
-    use 'text-generation' and format an instruction prompt.
+    Callers decide whether errors should fail the run or explicitly fall back
+    to templates.  This function must never hide an LLM failure as a template
+    result because that would corrupt label provenance.
     """
-    try:
-        from transformers import pipeline, AutoConfig  # noqa: WPS433
-    except ImportError:
-        logger.warning("transformers not installed — falling back to templates.")
-        return generate_template_label(category, issue)
-
-    try:
-        cfg = AutoConfig.from_pretrained(model_name)
-        model_type = getattr(cfg, "model_type", "").lower()
-    except Exception:
-        model_type = ""
-
     # Instruction prompt shared by both model families
     instruction = (
         f"You are a customer-support root-cause analyst. "
@@ -268,56 +295,45 @@ def generate_llm_label(
     )
 
     try:
-        logger.info("Loading local HF model '%s' …", model_name)
-
-        is_causal = any(k in model_type for k in ("qwen", "llama", "gpt", "bloom", "mistral", "falcon"))
-
         if is_causal:
-            pipe = pipeline(
-                "text-generation",
-                model=model_name,
-                device_map="auto",
+            raw = pipeline_instance(
+                instruction, do_sample=True, temperature=0.7, top_p=0.9,
                 max_new_tokens=80,
-            )
-            raw = pipe(instruction, do_sample=True, temperature=0.7, top_p=0.9)[0]["generated_text"]
-            # Strip the echoed prompt
+            )[0]["generated_text"]
             result = raw.split("Root cause:")[-1].strip()
         else:
-            pipe = pipeline(
-                "text2text-generation",
-                model=model_name,
-                device_map="auto",
+            result = pipeline_instance(
+                instruction, do_sample=True, temperature=0.7, top_p=0.9,
                 max_new_tokens=80,
-            )
-            result = pipe(instruction, do_sample=True, temperature=0.7, top_p=0.9)[0]["generated_text"].strip()
-
-        # Sanitise: keep only the first sentence and strip incomplete tails
-        result = result.split("\n")[0].strip()
-        if result and result[-1] not in ".!?":
-            result = result.rsplit(" ", 1)[0] + "."
-        return result if result else generate_template_label(category, issue)
-
+            )[0]["generated_text"].strip()
     except Exception as exc:
-        logger.warning("Local LLM inference failed (%s). Using template fallback.", exc)
-        return generate_template_label(category, issue)
+        raise RuntimeError(f"Local LLM generation failed: {exc}") from exc
+
+    result = result.split("\n")[0].strip()
+    if result and result[-1] not in ".!?":
+        result = result.rsplit(" ", 1)[0] + "."
+    if not result:
+        raise RuntimeError("Local LLM returned an empty root-cause label")
+    return result
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Cache helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def load_cache() -> dict:
-    if CACHE_FILE.exists():
+def load_cache(cache_file: Path) -> dict:
+    if cache_file.exists():
         try:
-            return json.loads(CACHE_FILE.read_text(encoding="utf-8"))
+            return json.loads(cache_file.read_text(encoding="utf-8"))
         except Exception:
+            logger.warning("Unable to read cache %s; starting with an empty cache.", cache_file)
             return {}
     return {}
 
 
-def save_cache(cache: dict) -> None:
-    CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    CACHE_FILE.write_text(
+def save_cache(cache_file: Path, cache: dict) -> None:
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text(
         json.dumps(cache, indent=2, ensure_ascii=False), encoding="utf-8"
     )
 
@@ -326,7 +342,7 @@ def save_cache(cache: dict) -> None:
 # Dataset loading
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _load_raw_datasets():
+def _load_raw_datasets(data_dir: Path):
     """
     Load all available raw datasets from data/raw/.
     Returns a list of UnifiedSample objects.
@@ -336,11 +352,11 @@ def _load_raw_datasets():
         from ml.dataset.loaders import load_all_datasets  # noqa: WPS433
         from ml.dataset.schema import UnifiedSample  # noqa: WPS433
     except ImportError as exc:
-        logger.warning("ml.dataset not importable (%s). Using bootstrap samples only.", exc)
+        logger.warning("ml.dataset not importable (%s). No local samples loaded.", exc)
         return [], None
 
     flags = {
-        "use_kaggle": True,
+        "use_local_complaint_dataset": True,
         "use_cfpb": True,
         "use_bitext": True,
         "use_banking77": True,
@@ -349,8 +365,8 @@ def _load_raw_datasets():
         "use_massive": True,
     }
 
-    # Load from data/raw/ (no Kaggle API needed — manual downloads only)
-    samples = load_all_datasets(RAW_DATA_DIR, flags=flags)
+    # Load from data/raw/ only. No dataset-service client is used.
+    samples = load_all_datasets(data_dir, flags=flags)
     return samples, UnifiedSample
 
 
@@ -413,77 +429,123 @@ def _bootstrap_samples(UnifiedSample):
 # Main pipeline
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _cache_key(sample, generation_method: str, model_name: str, source: str) -> str:
+    """Make a cache key that cannot mix sources, methods, models, or changed text."""
+    payload = "\x1f".join(
+        [generation_method, model_name, source, sample.id, sample.category,
+         sample.issue, sample.text]
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _cache_entry(label: str, generation_method: str, model_name: str, source: str) -> dict:
+    return {
+        "label": label,
+        "generation_method": generation_method,
+        "model_name": model_name,
+        "source": source,
+    }
+
+
 def run(
     use_local_llm: bool = False,
-    local_model: str = "google/flan-t5-large",
+    local_model: str = "",
     review_samples: int = 200,
     output_csv: Path = DEFAULT_CSV,
     seed: int = 42,
-) -> None:
-    random.seed(seed)
+    raw_data_dir: Path = RAW_DATA_DIR,
+    template_cache_file: Path = TEMPLATE_CACHE_FILE,
+    llm_cache_file: Path = LLM_CACHE_FILE,
+    allow_bootstrap: bool = False,
+    fallback_to_template: bool = False,
+) -> Path:
+    """Generate auditable labels and a review CSV from one explicit source.
 
-    # ── 1. Load cache ────────────────────────────────────────────────────────
-    cache = load_cache()
+    Bootstrap records are only allowed when explicitly requested. They are
+    marked as synthetic and never silently mixed into real local-data reviews.
+    """
+    if review_samples <= 0:
+        raise ValueError("review_samples must be greater than zero")
+    if use_local_llm and not local_model:
+        raise ValueError("--local-model is required with --use-local-llm")
+
+    random.seed(seed)
+    generation_method = "local_hf" if use_local_llm else "template"
+    model_name = local_model if use_local_llm else "template-variants-v1"
+    cache_file = llm_cache_file if use_local_llm else template_cache_file
+    cache = load_cache(cache_file)
     logger.info("Loaded %d pre-cached silver labels.", len(cache))
 
-    # ── 2. Load datasets ─────────────────────────────────────────────────────
-    samples, UnifiedSample = _load_raw_datasets()
+    samples, UnifiedSample = _load_raw_datasets(Path(raw_data_dir))
+    source = "local_dataset"
 
     if not samples:
-        logger.info(
-            "No datasets found in %s — using internal bootstrap set "
-            "(%d samples covering all (category, issue) buckets).",
-            RAW_DATA_DIR, 30,
-        )
-        # Re-import UnifiedSample for bootstrap
+        if not allow_bootstrap:
+            raise RuntimeError(
+                f"No local datasets found in {raw_data_dir}. Add manually downloaded "
+                "data or pass --allow-bootstrap for explicitly synthetic demo data."
+            )
         try:
             from ml.dataset.schema import UnifiedSample as US  # noqa: WPS433
         except ImportError:
-            logger.error("Cannot import UnifiedSample. Aborting.")
-            return
+            raise RuntimeError("Cannot import UnifiedSample for bootstrap data")
         samples = _bootstrap_samples(US)
-    else:
-        # Always add bootstrap samples to guarantee full bucket coverage
-        try:
-            from ml.dataset.schema import UnifiedSample as US  # noqa: WPS433
-            samples = samples + _bootstrap_samples(US)
-        except ImportError:
-            pass
+        source = "synthetic_bootstrap"
 
     logger.info("Total samples to label: %d", len(samples))
+    if len(samples) < review_samples:
+        raise RuntimeError(
+            f"Requested {review_samples} review samples but only {len(samples)} "
+            f"valid {source} samples are available. No review CSV was written."
+        )
 
-    # ── 3. Generate labels ───────────────────────────────────────────────────
+    pipeline_instance = None
+    is_causal = False
+    if use_local_llm:
+        pipeline_instance, is_causal = load_local_llm_pipeline(local_model)
+
     new_count = 0
+    sample_generation_methods: dict[str, str] = {}
     for sample in samples:
-        sid = sample.id
-
-        if sid in cache:
-            sample.root_cause = cache[sid]
+        key = _cache_key(sample, generation_method, model_name, source)
+        cached = cache.get(key)
+        if isinstance(cached, dict) and cached.get("label"):
+            sample.root_cause = cached["label"]
+            sample_generation_methods[sample.id] = cached.get(
+                "generation_method", generation_method
+            )
             continue
 
         if use_local_llm:
-            label = generate_llm_label(
-                text=sample.text,
-                category=sample.category,
-                issue=sample.issue,
-                model_name=local_model,
-            )
+            try:
+                label = generate_llm_label(
+                    text=sample.text, category=sample.category, issue=sample.issue,
+                    pipeline_instance=pipeline_instance, is_causal=is_causal,
+                )
+            except RuntimeError:
+                if not fallback_to_template:
+                    raise
+                logger.warning("LLM label failed for %s; explicit template fallback used.", sample.id)
+                label = generate_template_label(sample.category, sample.issue)
+                generation_for_entry = "template_fallback"
+            else:
+                generation_for_entry = "local_hf"
         else:
             label = generate_template_label(sample.category, sample.issue)
+            generation_for_entry = "template"
 
-        cache[sid] = label
+        cache[key] = _cache_entry(label, generation_for_entry, model_name, source)
         sample.root_cause = label
+        sample_generation_methods[sample.id] = generation_for_entry
         new_count += 1
 
-    save_cache(cache)
+    save_cache(cache_file, cache)
     logger.info(
         "Labels generated: %d new, %d from cache.  Total cached: %d.",
         new_count, len(samples) - new_count, len(cache),
     )
 
-    # ── 4. Export 200 random samples to CSV ─────────────────────────────────
-    n_export = min(review_samples, len(samples))
-    review_pool = random.sample(samples, n_export)
+    review_pool = random.sample(samples, review_samples)
 
     rows = []
     for s in review_pool:
@@ -495,9 +557,11 @@ def run(
             "language":             getattr(s, "language", "en"),
             "text":                 textwrap.shorten(s.text, width=300, placeholder="…"),
             "silver_root_cause":    s.root_cause,
-            # Reviewer fills in these two columns during manual spot-check
-            "manual_approved":      "",   # Y / N / EDIT
+            "manual_approved":      "",
             "manual_correction":    "",
+            "generation_method":    sample_generation_methods[s.id],
+            "model_name":           model_name,
+            "source":               source,
         })
 
     df = pd.DataFrame(rows)
@@ -511,6 +575,7 @@ def run(
     logger.info("Category distribution in exported CSV:")
     for cat, cnt in sorted(cat_counts.items(), key=lambda x: -x[1]):
         logger.info("  %-20s %d", cat, cnt)
+    return output_csv
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -527,8 +592,9 @@ if __name__ == "__main__":
             # Pure template mode (fastest, zero GPU required):
             python scripts/generate_silver_labels.py
 
-            # Local flan-t5-large  (downloads ~3 GB once, then offline):
-            python scripts/generate_silver_labels.py --use-local-llm
+            # Local model, with no downloads:
+            python scripts/generate_silver_labels.py --use-local-llm \
+                --local-model /path/to/local-model
 
             # Qwen2.5-1.5B-Instruct (GGUF / safetensors in a local folder):
             python scripts/generate_silver_labels.py --use-local-llm \\
@@ -547,10 +613,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--local-model",
         type=str,
-        default="google/flan-t5-large",
+        default="",
         help=(
-            "HF model name or local path for instruct inference. "
-            "Default: google/flan-t5-large"
+            "Previously downloaded local Hugging Face model path or cache id. "
+            "Required with --use-local-llm; downloads are disabled."
         ),
     )
     parser.add_argument(
@@ -575,14 +641,25 @@ if __name__ == "__main__":
         "--clear-cache",
         action="store_true",
         default=False,
-        help="Delete the existing silver-label cache before running.",
+        help="Delete the selected method-specific silver-label cache before running.",
+    )
+    parser.add_argument(
+        "--allow-bootstrap",
+        action="store_true",
+        help="Use clearly labelled synthetic bootstrap data only when no local dataset exists.",
+    )
+    parser.add_argument(
+        "--fallback-to-template",
+        action="store_true",
+        help="Allow explicit template fallback if local LLM generation fails.",
     )
 
     args = parser.parse_args()
 
-    if args.clear_cache and CACHE_FILE.exists():
-        CACHE_FILE.unlink()
-        logger.info("Cache cleared: %s", CACHE_FILE)
+    selected_cache = LLM_CACHE_FILE if args.use_local_llm else TEMPLATE_CACHE_FILE
+    if args.clear_cache and selected_cache.exists():
+        selected_cache.unlink()
+        logger.info("Cache cleared: %s", selected_cache)
 
     run(
         use_local_llm=args.use_local_llm,
@@ -590,4 +667,6 @@ if __name__ == "__main__":
         review_samples=args.review_samples,
         output_csv=Path(args.output_csv),
         seed=args.seed,
+        allow_bootstrap=args.allow_bootstrap,
+        fallback_to_template=args.fallback_to_template,
     )

@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Dict, List
@@ -33,7 +34,17 @@ def _matches_filter(doc: Dict, query: Dict | None) -> bool:
     if not query:
         return True
     for key, value in query.items():
-        if doc.get(key) != value:
+        document_value = doc.get(key)
+        if isinstance(value, dict):
+            if "$regex" in value:
+                if not re.search(value["$regex"], str(document_value or "")):
+                    return False
+            elif "$lt" in value:
+                if document_value is None or document_value >= value["$lt"]:
+                    return False
+            else:
+                return False
+        elif document_value != value:
             return False
     return True
 
@@ -49,6 +60,10 @@ class _LocalCursor:
 
     def __iter__(self):
         return iter(self._docs)
+
+    def limit(self, count: int):
+        self._docs = self._docs[:count]
+        return self
 
 
 class _LocalCollection:
@@ -112,12 +127,27 @@ class _LocalCollection:
         self._write(docs)
         return SimpleNamespace(matched_count=1, modified_count=1, upserted_id=None)
 
+    def update_many(self, query: Dict, update: Dict):
+        docs = self._read()
+        matched_count = 0
+        for index, document in enumerate(docs):
+            if not _matches_filter(document, query):
+                continue
+            for key, value in update.get("$set", {}).items():
+                document[key] = value
+            docs[index] = document
+            matched_count += 1
+        if matched_count:
+            self._write(docs)
+        return SimpleNamespace(matched_count=matched_count, modified_count=matched_count)
+
 
 class _LocalDB:
     def __init__(self, data_dir: Path):
         self.users = _LocalCollection(data_dir / "users.json")
         self.complaints = _LocalCollection(data_dir / "complaints.json")
         self.login_logs = _LocalCollection(data_dir / "login_logs.json")
+        self.replies = _LocalCollection(data_dir / "replies.json")
 
 
 class _DBProxy:
