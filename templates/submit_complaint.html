@@ -1,73 +1,143 @@
 {% extends "base.html" %}
-{% block title %}Submit Complaint — SentriMail{% endblock %}
+{% block title %}Submit Complaint — SentriMail Support Desk{% endblock %}
 
 {% block nav_links %}
-<a href="/user/dashboard" class="nav-link">Dashboard</a>
-<a href="/user/submit" class="nav-link">Submit Complaint</a>
+<a href="/user/dashboard" class="nav-item">Dashboard</a>
+<a href="/user/submit" class="nav-item active">Submit Complaint</a>
+<a href="/track" class="nav-item">Track Code</a>
 {% endblock %}
 
 {% block content %}
-<div class="fade-up">
-  <div class="section-header">
-    <div>
-      <div class="section-title">Submit a Complaint</div>
-      <div class="section-sub">Describe your issue and our team will respond.</div>
-    </div>
-    <a href="/user/dashboard" class="btn btn-outline">← Back</a>
+<div class="page-header" style="max-width: 800px; margin: 0 auto 24px auto;">
+  <div>
+    <h1 class="page-title">Submit a Support Complaint</h1>
+    <p class="page-sub">Provide details below. Our AI triage system will classify urgency and assign to an agent.</p>
   </div>
-
-  {% if success %}
-  <div class="alert alert-success fade-up" style="margin-bottom:20px">
-    ✅ Complaint "<strong>{{ title }}</strong>" submitted successfully.
-    <br>Your tracking code is: <strong style="color:var(--blue);font-family:monospace;font-size:16px;">{{ complaint.complaint_code }}</strong>
-  </div>
-  {% endif %}
-
-  <div class="card fade-up-1">
-    <form method="POST" action="/user/submit">
-      <div class="form-group">
-        <label class="form-label">Complaint Title</label>
-        <input type="text" name="title" class="form-control" placeholder="Brief summary of your issue" required>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Language</label>
-        <select name="language" class="form-control">
-          <option value="en" selected>English</option>
-          <option value="hi">Hindi</option>
-          <option value="ta">Tamil</option>
-          <option value="te">Telugu</option>
-          <option value="kn">Kannada</option>
-          <option value="ml">Malayalam</option>
-          <option value="bn">Bengali</option>
-          <option value="mr">Marathi</option>
-          <option value="es">Spanish</option>
-          <option value="fr">French</option>
-          <option value="ar">Arabic</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
-          Describe Your Issue
-          <span style="display:flex; gap:8px; align-items:center;">
-            <span id="recordingIndicator" style="display:none; width:8px; height:8px; border-radius:50%; background:red; box-shadow:0 0 8px red; animation:pulse 1s infinite;"></span>
-            <button type="button" id="micBtn" class="btn btn-sm btn-outline" style="padding:4px 8px;" title="Dictate complaint">🎤</button>
-            <label class="btn btn-sm btn-outline" style="padding:4px 8px; cursor:pointer;" title="Upload Audio File">
-              📁 <input type="file" id="audioUpload" accept=".mp3,.wav" style="display:none;">
-            </label>
-          </span>
-        </label>
-        <textarea id="complaintDesc" name="description" class="form-control" rows="7" placeholder="Please describe your complaint in detail." required></textarea>
-        <div id="transcribeStatus" style="font-size:12px; color:var(--muted); margin-top:4px; display:none;">Transcribing...</div>
-      </div>
-      <button type="submit" class="btn btn-primary" style="width:100%">
-        Submit
-      </button>
-    </form>
-  </div>
+  <a href="/user/dashboard" class="btn btn-outline btn-sm">← Back to Dashboard</a>
 </div>
 
+{% if success %}
+<div class="alert alert-success" style="max-width: 800px; margin: 0 auto 24px auto;">
+  <div>
+    <strong>✅ Complaint Submitted Successfully!</strong>
+    <div style="font-size: 13px; margin-top: 4px;">
+      Tracking Code: 
+      <span class="mono-id" onclick="copyToClipboard('{{ complaint.complaint_code }}', event)" style="margin-left: 6px;">
+        {{ complaint.complaint_code }} 📋
+      </span>
+      {% if auto_resolved %}
+      <span class="badge status-resolved" style="margin-left:8px;">AUTO-RESOLVED</span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="panel" style="max-width: 800px; margin: 0 auto;">
+  <form id="complaintForm" method="POST" action="/user/submit" onsubmit="handleFormSubmit(event)">
+    
+    <!-- Title Field -->
+    <div class="form-group">
+      <label class="form-label" for="titleInput">Complaint Title / Subject <span style="color:var(--priority-critical)">*</span></label>
+      <input type="text" id="titleInput" name="title" class="form-control" placeholder="Summarize your issue concisely (e.g., Unable to reset password via portal)" required autofocus maxlength="120">
+      <div class="helper-text">Provide a concise, descriptive title to assist automated triage.</div>
+    </div>
+
+    <!-- Language Selector with Hint -->
+    <div class="form-group">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <label class="form-label" for="langSelect" style="margin-bottom:0;">Language of Submission</label>
+        <span id="langHintBadge" class="badge badge-neutral" style="display:none; font-size:10px;">Detected Language</span>
+      </div>
+      <select id="langSelect" name="language" class="form-select" onchange="updateLangHint()">
+        <option value="en" selected>English (Default)</option>
+        <option value="hi">Hindi (हिंदी)</option>
+        <option value="ta">Tamil (தமிழ்)</option>
+        <option value="te">Telugu (తెలుగు)</option>
+        <option value="kn">Kannada (ಕನ್ನಡ)</option>
+        <option value="ml">Malayalam (മലയാളം)</option>
+        <option value="bn">Bengali (বাংলা)</option>
+        <option value="mr">Marathi (मराठी)</option>
+        <option value="es">Spanish (Español)</option>
+        <option value="fr">French (Français)</option>
+        <option value="ar">Arabic (العربية)</option>
+      </select>
+      <div class="helper-text">Multi-lingual submissions are automatically translated to English for administrative review.</div>
+    </div>
+
+    <!-- Description Field with Microphone & Audio Upload -->
+    <div class="form-group">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <label class="form-label" for="complaintDesc" style="margin-bottom:0;">
+          Detailed Description <span style="color:var(--priority-critical)">*</span>
+        </label>
+
+        <!-- Dictation & Audio Upload Controls -->
+        <div style="display:flex; gap:8px; align-items:center;">
+          <span id="recordingIndicator" style="display:none; width:8px; height:8px; border-radius:50%; background:#EF4444; animation:pulse 1s infinite;"></span>
+          
+          <button type="button" id="micBtn" class="btn btn-outline btn-sm" title="Voice Dictation">
+            🎙️ Dictate
+          </button>
+
+          <label class="btn btn-outline btn-sm" style="cursor:pointer;" title="Upload Audio File (.mp3/.wav)">
+            📁 Audio Upload
+            <input type="file" id="audioUpload" accept=".mp3,.wav" style="display:none;">
+          </label>
+        </div>
+      </div>
+
+      <textarea id="complaintDesc" name="description" class="form-textarea" rows="7" placeholder="Please describe the full situation, steps leading up to the issue, error messages received, and impact..." required maxlength="2000" oninput="updateCharCount()"></textarea>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+        <div id="transcribeStatus" class="helper-text" style="display:none; color:var(--accent);">Transcribing audio...</div>
+        <div class="char-counter" style="margin-left:auto;"><span id="charCount">0</span> / 2000 characters</div>
+      </div>
+    </div>
+
+    <!-- Submit Button with Loading Spinner -->
+    <div style="margin-top: 24px;">
+      <button type="submit" id="submitBtn" class="btn btn-primary btn-lg" style="width:100%;">
+        <span id="btnText">Submit Complaint</span>
+        <span id="btnSpinner" class="spinner" style="display:none;"></span>
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
 <script>
-// Web Speech API
+// Character Counter
+function updateCharCount() {
+  const text = document.getElementById('complaintDesc').value;
+  document.getElementById('charCount').innerText = text.length;
+}
+
+// Language Auto-detect display hint
+function updateLangHint() {
+  const sel = document.getElementById('langSelect');
+  const badge = document.getElementById('langHintBadge');
+  if (sel.value !== 'en') {
+    badge.innerText = 'Translation target: ' + sel.options[sel.selectedIndex].text;
+    badge.style.display = 'inline-flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// Loading State on Submit
+function handleFormSubmit(e) {
+  const btn = document.getElementById('submitBtn');
+  const btnText = document.getElementById('btnText');
+  const btnSpinner = document.getElementById('btnSpinner');
+
+  btn.disabled = true;
+  btnText.innerText = 'Submitting Complaint...';
+  btnSpinner.style.display = 'inline-block';
+}
+
+// Voice Dictation (Web Speech API)
 const micBtn = document.getElementById('micBtn');
 const recordingIndicator = document.getElementById('recordingIndicator');
 const complaintDesc = document.getElementById('complaintDesc');
@@ -92,6 +162,7 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
     }
     if (finalTranscript) {
       complaintDesc.value += (complaintDesc.value ? ' ' : '') + finalTranscript;
+      updateCharCount();
     }
   };
 
@@ -102,28 +173,31 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
 
 micBtn.addEventListener('click', () => {
   if (!recognition) {
-    alert("Speech recording is not supported in this browser.");
+    alert("Speech recognition is not supported in this browser. You can upload an audio file instead.");
     return;
   }
   if (!isRecording) {
     recognition.start();
     isRecording = true;
     recordingIndicator.style.display = 'inline-block';
-    micBtn.style.borderColor = 'red';
+    micBtn.classList.add('btn-danger');
+    micBtn.innerText = '⏹ Stop Dictation';
   } else {
     isRecording = false;
     recognition.stop();
     recordingIndicator.style.display = 'none';
-    micBtn.style.borderColor = '';
+    micBtn.classList.remove('btn-danger');
+    micBtn.innerText = '🎙️ Dictate';
   }
 });
 
+// Audio File Upload & API Transcription
 audioUpload.addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
 
   transcribeStatus.style.display = 'block';
-  transcribeStatus.innerText = 'Transcribing audio...';
+  transcribeStatus.innerText = 'Uploading & Transcribing audio file...';
   
   const formData = new FormData();
   formData.append('audio', file);
@@ -135,20 +209,20 @@ audioUpload.addEventListener('change', async (e) => {
     });
     const data = await res.json();
     if (data.text) {
-      complaintDesc.value += (complaintDesc.value ? ' ' : '') + data.text;
-      transcribeStatus.innerText = 'Transcription successful.';
+      complaintDesc.value += (complaintDesc.value ? '\n' : '') + data.text;
+      updateCharCount();
+      transcribeStatus.innerText = '✅ Transcription added to description.';
     } else {
-      transcribeStatus.innerText = 'Could not transcribe.';
+      transcribeStatus.innerText = '⚠️ Could not transcribe audio.';
     }
-  } catch(e) {
-    transcribeStatus.innerText = 'Transcription failed.';
+  } catch(err) {
+    transcribeStatus.innerText = '❌ Audio transcription failed.';
   }
-  setTimeout(() => { transcribeStatus.style.display = 'none'; }, 3000);
+  setTimeout(() => { transcribeStatus.style.display = 'none'; }, 4000);
 });
 </script>
 
 <style>
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
 </style>
-
 {% endblock %}

@@ -1,53 +1,56 @@
 {% extends "base.html" %}
-{% block title %}Users — SentriMail{% endblock %}
+{% block title %}User Management — SentriMail Admin{% endblock %}
 
 {% block nav_links %}
-<a href="/admin/dashboard" class="nav-link">← Inbox</a>
-<a href="/admin/users" class="nav-link">Users</a>
+<a href="/admin/dashboard" class="nav-item">← Triage Queue</a>
+<a href="/admin/users" class="nav-item active">User Management</a>
+<a href="/admin/export" class="nav-item">Export CSV</a>
 {% endblock %}
 
 {% block content %}
-<div class="fade-up">
-  <div class="section-header">
-    <div>
-      <div class="section-title">User Management</div>
-      <div class="section-sub">All registered accounts in the system</div>
-    </div>
-    <span class="mono" style="font-size:12px;color:var(--muted)">{{ users|length }} accounts</span>
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Registered System Users</h1>
+    <p class="page-sub">System user directory and role assignments</p>
   </div>
+  <span class="mono" style="color:var(--text-subtle)">Total Accounts: {{ users|length }}</span>
+</div>
 
-  <div class="card">
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Username</th>
-            <th>Email</th>
-            <th>Role</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for u in users %}
-          <tr>
-            <td>
-              <div style="display:flex;align-items:center;gap:8px">
-                <div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--purple));display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:white;font-family:'Syne',sans-serif">
-                  {{ u.username[0].upper() }}
-                </div>
-                <span style="color:var(--text);font-weight:500">{{ u.username }}</span>
+<div class="panel" style="padding:0; overflow:hidden;">
+  <div class="table-container">
+    <table class="data-table responsive-cards">
+      <thead>
+        <tr>
+          <th>User Account</th>
+          <th>Email Address</th>
+          <th>Assigned Role</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td data-label="User Account">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <div class="user-avatar" style="width:30px; height:30px; font-size:12px;">
+                {{ u.username[0] | upper }}
               </div>
-            </td>
-            <td><span style="font-size:12px;color:var(--muted);font-family:'DM Mono',monospace">{{ u.email }}</span></td>
-            <td>
-              <span class="nav-badge {% if u.role == 'admin' %}badge-admin{% else %}badge-user{% endif %}">
-                {{ u.role }}
-              </span>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+              <span style="font-weight:500; color:var(--text)">{{ u.username }}</span>
+            </div>
+          </td>
+
+          <td data-label="Email Address">
+            <span class="mono" style="color:var(--text-muted)">{{ u.email or 'N/A' }}</span>
+          </td>
+
+          <td data-label="Role">
+            <span class="badge {% if u.role == 'admin' %}badge-admin{% else %}badge-user{% endif %}">
+              {{ u.role }}
+            </span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
 {% endblock %}

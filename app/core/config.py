@@ -35,6 +35,26 @@ class Settings(BaseSettings):
 
     openai_api_key: str | None = None
 
+    # Multi-task model and remote inference configuration
+    use_multitask_model: bool = False
+    multitask_model_name_or_path: str = "google/flan-t5-base"
+    remote_inference_url: str | None = None
+    remote_whisper_url: str | None = None
+
+    # Multi-task priority engine weights
+    priority_weight_sentiment: float = 40.0
+    priority_weight_emotion: float = 40.0
+    priority_weight_message_type: float = 20.0
+    priority_weight_urgency: float = 20.0
+
+    # Safety gating & confidence thresholds
+    min_confidence_auto_send: float = 0.85
+    min_confidence_classification: float = 0.60
+
+    # FAISS & RAG Retrieval configuration
+    faiss_embedding_model: str = "all-MiniLM-L6-v2"
+    faiss_top_k: int = 3
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

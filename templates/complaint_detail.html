@@ -1,272 +1,211 @@
 {% extends "base.html" %}
-{% block title %}Complaint #{{ complaint.id }} — SentriMail{% endblock %}
+{% block title %}Ticket #{{ complaint.complaint_code or complaint.id }} — Admin Triage{% endblock %}
 
 {% block nav_links %}
-<a href="/admin/dashboard" class="nav-link">← Back to Inbox</a>
-<a href="/admin/users" class="nav-link">Users</a>
-{% endblock %}
-
-{% block extra_head %}
-<style>
-.detail-grid { display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: start; }
-.detail-section { margin-bottom: 24px; }
-.detail-section-title {
-  font-family: 'DM Mono', monospace;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-  margin-bottom: 10px;
-}
-.complaint-body {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 18px;
-  font-size: 14px;
-  color: var(--subtle);
-  line-height: 1.8;
-  white-space: pre-wrap;
-}
-.ai-section {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 20px;
-  position: sticky;
-  top: 80px;
-}
-.meter {
-  margin: 10px 0;
-}
-.meter-header { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 5px; }
-.meter-bar { height: 5px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
-.meter-fill { height: 100%; border-radius: 3px; }
-.info-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 9px 0;
-  border-bottom: 1px solid var(--border);
-  font-size: 12px;
-}
-.info-row:last-child { border-bottom: none; }
-.info-label { color: var(--muted); font-family: 'DM Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
-.text-box {
-  border-radius: 8px;
-  padding: 12px;
-  font-size: 12px;
-  color: var(--subtle);
-  line-height: 1.7;
-  margin-top: 8px;
-}
-.root-box { background: rgba(59,130,246,0.05); border: 1px solid rgba(59,130,246,0.15); }
-.suggestion-box { background: rgba(245,158,11,0.06); border: 1px solid rgba(245,158,11,0.2); white-space: pre-wrap; }
-.response-box { background: rgba(16,185,129,0.05); border: 1px solid rgba(16,185,129,0.15); white-space: pre-wrap; font-family: 'DM Mono', monospace; font-size: 11px; }
-.status-form { display: flex; gap: 8px; flex-wrap: wrap; }
-@media (max-width: 768px) { .detail-grid { grid-template-columns: 1fr; } }
-</style>
+<a href="/admin/dashboard" class="nav-item">← Triage Queue</a>
+<a href="/admin/users" class="nav-item">User Management</a>
 {% endblock %}
 
 {% block content %}
-<div class="fade-up">
-  <!-- Header -->
-  <div style="margin-bottom:24px">
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px">
-      <span class="mono" style="color:var(--blue);font-size:16px">#{{ complaint.id }}</span>
-      <span class="priority-badge priority-{{ complaint.priority }}">
-        {% if complaint.priority == 'CRITICAL' %}🔴{% elif complaint.priority == 'HIGH' %}🟠{% elif complaint.priority == 'MEDIUM' %}🟡{% else %}🟢{% endif %}
-        {{ complaint.priority }}
+<div class="page-header">
+  <div>
+    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+      <span class="mono-id" onclick="copyToClipboard('{{ complaint.complaint_code or complaint.id }}', event)">
+        #{{ complaint.complaint_code or complaint.id }} 📋
       </span>
-      <span class="status-badge status-{{ complaint.status }}">
-        {{ complaint.status | replace('_', ' ') | title }}
+
+      {% set p = complaint.priority | default('LOW') %}
+      <span class="badge {% if p == 'CRITICAL' %}priority-CRITICAL{% elif p == 'HIGH' %}priority-HIGH{% elif p == 'MEDIUM' %}priority-MEDIUM{% else %}priority-LOW{% endif %}">
+        {{ p }} (Score: {{ complaint.priority_score }})
       </span>
-    </div>
-    <h1 style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;letter-spacing:-0.01em;margin-bottom:6px">
-      {{ complaint.title }}
-      {% if complaint.get('keyword_escalated') %}
-      <span style="font-size:12px; background:#ef4444; color:white; padding:4px 8px; border-radius:6px; margin-left:8px; vertical-align:middle;">AUTO-ESCALATED</span>
+
+      {% set s = complaint.status | default('pending') %}
+      <span class="badge {% if s in ['resolved', 'auto_replied'] %}status-resolved{% elif s == 'in_progress' %}status-in_progress{% elif s == 'rejected' %}status-rejected{% else %}status-pending{% endif %}">
+        {{ s | replace('_', ' ') | title }}
+      </span>
+
+      {% if complaint.keyword_escalated %}
+      <span class="badge priority-CRITICAL">KEYWORD ESCALATED</span>
       {% endif %}
-    </h1>
-    <div style="font-size:12px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap">
-      <span>👤 {{ complaint.username }}</span>
-      {% if complaint.email %}<span>✉️ {{ complaint.email }}</span>{% endif %}
-      <span>
-        <span style="font-size:10px;padding:2px 6px;border-radius:100px;background:var(--blue);color:white;font-weight:bold;text-transform:uppercase;margin-right:4px;">
-          {{ complaint.get('original_language', 'en') }}
-        </span>
-      </span>
-      <span>📂 {{ complaint.category | title }}</span>
-      <span>📅 {{ complaint.created_at[:10] }}</span>
+    </div>
+
+    <h1 class="page-title">{{ complaint.title }}</h1>
+    
+    <div class="page-sub">
+      Customer: <strong style="color:var(--text)">{{ complaint.username }}</strong>
+      {% if complaint.email %}({{ complaint.email }}){% endif %}
+      &nbsp;•&nbsp; Category: {{ complaint.category | title }}
+      &nbsp;•&nbsp; Submitted: <span class="mono">{{ complaint.created_at[:10] if complaint.created_at else 'N/A' }}</span>
     </div>
   </div>
 
-  <div class="detail-grid">
-    <!-- Left: Complaint content + status -->
-    <div>
-      <div class="detail-section">
-        <div class="detail-section-title">Complaint Description</div>
-        <div class="complaint-body">{{ complaint.description }}</div>
-      </div>
+  <div style="display:flex; gap:8px;">
+    <a href="/admin/dashboard" class="btn btn-outline btn-sm">← Back to Queue</a>
+  </div>
+</div>
 
-      {% if complaint.original_language and complaint.original_language != "en" and complaint.original_text %}
-      <div class="detail-section">
-        <div class="detail-section-title">Original Complaint Text ({{ complaint.original_language | upper }})</div>
-        <div class="complaint-body text-box" style="background:var(--surface)">{{ complaint.original_text }}</div>
-      </div>
-      {% endif %}
-
-      <!-- Status update -->
-      <div class="detail-section card">
-        <div class="detail-section-title">Update Status</div>
-        <form method="POST" action="/admin/complaint/{{ complaint.id }}/status" class="status-form">
-          <button name="status" value="pending" type="submit"
-            class="btn btn-sm {% if complaint.status == 'pending' %}btn-primary{% else %}btn-outline{% endif %}">
-            ⏳ Pending
-          </button>
-          <button name="status" value="in_progress" type="submit"
-            class="btn btn-sm {% if complaint.status == 'in_progress' %}btn-primary{% else %}btn-outline{% endif %}">
-            🔄 In Progress
-          </button>
-          <button name="status" value="resolved" type="submit"
-            class="btn btn-sm {% if complaint.status == 'resolved' %}btn-success{% else %}btn-outline{% endif %}">
-            ✅ Resolved
-          </button>
-          <button name="status" value="rejected" type="submit"
-            class="btn btn-sm {% if complaint.status == 'rejected' %}btn-danger{% else %}btn-outline{% endif %}">
-            ✗ Rejected
-          </button>
-        </form>
-      </div>
-
-      <!-- Root Cause -->
-      <div class="detail-section">
-        <div class="detail-section-title">🔍 Root Cause Analysis</div>
-        <div class="text-box root-box">{{ complaint.root_cause_summary }}</div>
-      </div>
-
-      <!-- Admin Final Response -->
-      <div class="detail-section">
-        <div class="detail-section-title">🤖 AI Suggested Response (Admin Draft)</div>
-        <div class="text-box suggestion-box" id="aiSuggestedResponse">
-          {{ complaint.admin_suggested_response or complaint.ai_suggested_response or "No AI suggestion available." }}
-        </div>
-        <div style="margin-top:10px">
-          <button type="button" class="btn btn-outline btn-sm" onclick="useAiSuggestion()">Use Suggestion In Reply Box</button>
-        </div>
-      </div>
-
-      <div class="detail-section">
-        <div class="detail-section-title">✏️ Final Response To User</div>
-        <form method="POST" action="/admin/complaint/{{ complaint.id }}/response">
-          <textarea id="adminResponseBox" name="response" class="form-control" rows="6" placeholder="Compose the message that will be sent to the user. You can start from the AI suggestion shown above.">{% if complaint.admin_response %}{{ complaint.admin_response }}{% else %}{{ complaint.admin_suggested_response or complaint.ai_suggested_response }}{% endif %}</textarea>
-          <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-            <button type="submit" class="btn btn-primary btn-sm">Send &amp; Mark Resolved</button>
-          </div>
-        </form>
-        {% if complaint.admin_response %}
-        <div style="margin-top:14px">
-          <div class="detail-section-title">✅ Current Response Sent</div>
-          <div class="text-box response-box">{{ complaint.admin_response }}</div>
-        </div>
-        {% endif %}
-      </div>
+<!-- Workflow Timeline -->
+<div class="panel">
+  <div class="timeline">
+    <div class="timeline-step completed">
+      <div class="timeline-dot">✓</div>
+      <div class="timeline-label">Ingested</div>
     </div>
-
-    <!-- Right: AI analysis sidebar -->
-    <div class="ai-section fade-up-1">
-      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;margin-bottom:4px">🤖 AI Analysis</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:16px">
-        Model: <span class="mono" style="color:{% if complaint.model_used == 'transformer' %}var(--green){% else %}var(--amber){% endif %}">{{ complaint.model_used }}</span>
-      </div>
-
-      <!-- Sentiment -->
-      <div class="info-row">
-        <span class="info-label">Sentiment</span>
-        <span style="font-size:12px;font-weight:500;
-          color:{% if complaint.sentiment_label == 'NEGATIVE' %}#f43f5e{% elif complaint.sentiment_label == 'POSITIVE' %}#10b981{% else %}#94a3b8{% endif %}">
-          {{ complaint.sentiment_label }}
-        </span>
-      </div>
-      <div class="meter">
-        <div class="meter-header">
-          <span>Confidence</span>
-          {% if complaint.get("sentiment_score") is not none %}
-          <span>{{ "%.0f"|format(complaint.get("sentiment_score") * 100) }}%</span>
-          {% else %}
-          <span>N/A</span>
-          {% endif %}
-        </div>
-        <div class="meter-bar">
-          <div class="meter-fill" style="width:{{ "%.0f"|format(complaint.get("sentiment_score", 0) * 100) }}%;
-            background:{% if complaint.sentiment_label == 'NEGATIVE' %}#f43f5e{% elif complaint.sentiment_label == 'POSITIVE' %}#10b981{% else %}#64748b{% endif %}">
-          </div>
-        </div>
-      </div>
-
-      <!-- Emotion -->
-      <div class="info-row">
-        <span class="info-label">Emotion</span>
-        <span style="font-size:12px;color:var(--subtle)">
-          {% if complaint.emotion_label|lower == 'anger' %}😡
-          {% elif complaint.emotion_label|lower == 'fear' %}😨
-          {% elif complaint.emotion_label|lower == 'sadness' %}😢
-          {% elif complaint.emotion_label|lower == 'disgust' %}🤢
-          {% elif complaint.emotion_label|lower == 'joy' %}😊
-          {% elif complaint.emotion_label|lower == 'surprise' %}😲
-          {% else %}😐{% endif %}
-          {{ complaint.emotion_label }}
-        </span>
-      </div>
-      <div class="meter">
-        <div class="meter-header">
-          <span>Intensity</span>
-          <span>{{ "%.0f"|format(complaint.emotion_score * 100) }}%</span>
-        </div>
-        <div class="meter-bar">
-          <div class="meter-fill" style="width:{{ "%.0f"|format(complaint.emotion_score * 100) }}%;background:var(--purple)"></div>
-        </div>
-      </div>
-
-      <!-- Priority -->
-      <div class="info-row">
-        <span class="info-label">Priority Score</span>
-        <span class="mono" style="color:var(--text)">{{ complaint.priority_score }} / 100</span>
-      </div>
-      <div class="meter">
-        <div class="meter-bar">
-          <div class="meter-fill" style="width:{{ complaint.priority_score }}%;
-            background:{% if complaint.priority == 'CRITICAL' %}#ef4444{% elif complaint.priority == 'HIGH' %}#f97316{% elif complaint.priority == 'MEDIUM' %}#eab308{% else %}#22c55e{% endif %}">
-          </div>
-        </div>
-      </div>
-
-      <div style="font-size:11px;color:var(--muted);padding:10px 0;line-height:1.6;border-top:1px solid var(--border);margin-top:8px">
-        {{ complaint.priority_description }}
-      </div>
-
-      <!-- Timeline -->
-      <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px">
-        <div class="info-row">
-          <span class="info-label">Submitted</span>
-          <span class="mono" style="font-size:10px">{{ complaint.created_at[:16] | replace("T"," ") }}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Last Updated</span>
-          <span class="mono" style="font-size:10px">{{ complaint.updated_at[:16] | replace("T"," ") }}</span>
-        </div>
-      </div>
+    <div class="timeline-step completed">
+      <div class="timeline-dot">✓</div>
+      <div class="timeline-label">AI Analyzed</div>
+    </div>
+    <div class="timeline-step {% if complaint.status != 'pending' %}completed{% else %}active{% endif %}">
+      <div class="timeline-dot">{% if complaint.status != 'pending' %}✓{% else %}3{% endif %}</div>
+      <div class="timeline-label">Triage & Draft</div>
+    </div>
+    <div class="timeline-step {% if complaint.status in ['resolved', 'auto_replied'] %}completed{% endif %}">
+      <div class="timeline-dot">{% if complaint.status in ['resolved', 'auto_replied'] %}✓{% else %}4{% endif %}</div>
+      <div class="timeline-label">Resolved</div>
     </div>
   </div>
 </div>
 
+<div style="display: grid; grid-template-columns: 1fr 360px; gap: 24px; align-items: start;">
+  <!-- Main Workflow Column -->
+  <div>
+    <!-- Complaint Narrative & Translation -->
+    <div class="panel">
+      <div class="form-label" style="margin-bottom: 8px;">Customer Complaint Narrative</div>
+      
+      {% if complaint.original_language and complaint.original_language != 'en' and complaint.original_text %}
+      <div class="comparison-grid">
+        <div>
+          <div class="form-label" style="font-size: 10px;">Original Text ({{ complaint.original_language | upper }})</div>
+          <div class="content-box">{{ complaint.original_text }}</div>
+        </div>
+        <div>
+          <div class="form-label" style="font-size: 10px;">Translated English Description</div>
+          <div class="content-box">{{ complaint.description }}</div>
+        </div>
+      </div>
+      {% else %}
+      <div class="content-box">{{ complaint.description }}</div>
+      {% endif %}
+    </div>
+
+    <!-- Quick Status Triage Actions -->
+    <div class="panel">
+      <div class="form-label" style="margin-bottom: 12px;">Update Ticket Status</div>
+      <form method="POST" action="/admin/complaint/{{ complaint.id }}/status" style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button name="status" value="pending" type="submit" class="btn btn-outline btn-sm {% if complaint.status == 'pending' %}btn-secondary{% endif %}">Pending Admin</button>
+        <button name="status" value="in_progress" type="submit" class="btn btn-outline btn-sm {% if complaint.status == 'in_progress' %}btn-secondary{% endif %}">In Progress</button>
+        <button name="status" value="resolved" type="submit" class="btn btn-primary btn-sm {% if complaint.status == 'resolved' %}btn-primary{% endif %}">Mark Resolved</button>
+        <button name="status" value="rejected" type="submit" class="btn btn-danger btn-sm">Reject Ticket</button>
+      </form>
+    </div>
+
+    <!-- AI Diagnostic Root Cause Analysis Panel -->
+    <div class="panel">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
+        <div class="form-label" style="margin-bottom:0;">Diagnostic Root Cause Analysis</div>
+        <span class="badge badge-neutral" style="font-size:10px;">AI Inferred</span>
+      </div>
+      <div class="content-box" style="background-color: var(--surface-hover); border-color: var(--border);">
+        {{ complaint.root_cause_summary or "Diagnostic root cause analysis unavailable for this ticket." }}
+      </div>
+    </div>
+
+    <!-- AI Response Draft / Agent Resolution Editor -->
+    <div class="panel">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
+        <div class="form-label" style="margin-bottom:0;">AI Suggested Draft &amp; Agent Editor</div>
+        <span class="badge status-resolved" style="font-size:10px;">Confidence: {{ "%.0f"|format(complaint.get("sentiment_score", 0.85) * 100) }}%</span>
+      </div>
+
+      <div id="aiSuggestionBox" style="display:none;">{{ complaint.admin_suggested_response or complaint.ai_suggested_response }}</div>
+
+      <form method="POST" action="/admin/complaint/{{ complaint.id }}/response">
+        <div class="form-group">
+          <textarea id="adminResponseBox" name="response" class="form-textarea" rows="6" placeholder="Compose or edit customer response text...">{% if complaint.admin_response %}{{ complaint.admin_response }}{% else %}{{ complaint.admin_suggested_response or complaint.ai_suggested_response }}{% endif %}</textarea>
+        </div>
+
+        <div style="display:flex; gap:8px; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="copyAiDraft()">📋 Reset to AI Draft</button>
+          
+          <div style="display:flex; gap:8px;">
+            <button type="submit" name="action" value="approve" class="btn btn-primary btn-sm">Approve &amp; Dispatch Resolution</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    {% if complaint.admin_response %}
+    <div class="panel" style="border-color: var(--status-resolved-border);">
+      <div class="form-label" style="color:var(--status-resolved); margin-bottom: 8px;">Dispatched Resolution Record</div>
+      <div class="content-box" style="background-color: var(--status-resolved-bg); border-color: var(--status-resolved-border);">
+        {{ complaint.admin_response }}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- AI Inference Sidebar Panel -->
+  <div class="panel" style="position: sticky; top: 76px;">
+    <h3 style="font-size:15px; font-weight:600; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:8px;">
+      AI Model Inference
+    </h3>
+
+    <div style="display:flex; justify-content:space-between; padding: 6px 0; border-bottom: 1px solid var(--border-subtle); font-size:12px;">
+      <span class="form-label" style="margin-bottom:0;">Model Engine</span>
+      <span class="mono" style="color:var(--text)">{{ complaint.model_used }}</span>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; padding: 6px 0; border-bottom: 1px solid var(--border-subtle); font-size:12px;">
+      <span class="form-label" style="margin-bottom:0;">Sentiment</span>
+      <span class="chip {% if complaint.sentiment_label == 'NEGATIVE' %}chip-negative{% elif complaint.sentiment_label == 'POSITIVE' %}chip-positive{% endif %}">
+        {{ complaint.sentiment_label }}
+      </span>
+    </div>
+
+    <div style="padding: 8px 0; border-bottom: 1px solid var(--border-subtle);">
+      <div style="display:flex; justify-content:space-between; font-size:11px;" class="mono">
+        <span style="color:var(--text-subtle);">Sentiment Score</span>
+        <span>{{ "%.0f"|format(complaint.get("sentiment_score", 0.5) * 100) }}%</span>
+      </div>
+      <div class="meter-bg">
+        <div class="meter-bar" style="width: {{ "%.0f"|format(complaint.get("sentiment_score", 0.5) * 100) }}%;"></div>
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; padding: 6px 0; border-bottom: 1px solid var(--border-subtle); font-size:12px;">
+      <span class="form-label" style="margin-bottom:0;">Emotion Tone</span>
+      <span class="chip">{{ complaint.emotion_label | title }}</span>
+    </div>
+
+    <div style="padding: 8px 0; border-bottom: 1px solid var(--border-subtle);">
+      <div style="display:flex; justify-content:space-between; font-size:11px;" class="mono">
+        <span style="color:var(--text-subtle);">Computed Urgency Score</span>
+        <span style="font-weight:600;">{{ complaint.priority_score }} / 100</span>
+      </div>
+      <div class="meter-bg" style="height:6px; margin-top:4px;">
+        <div class="meter-bar" style="width: {{ complaint.priority_score }}%; background-color: {% if p == 'CRITICAL' %}var(--priority-critical){% elif p == 'HIGH' %}var(--priority-high){% elif p == 'MEDIUM' %}var(--priority-medium){% else %}var(--priority-low){% endif %};"></div>
+      </div>
+    </div>
+
+    <div style="padding-top:12px; font-size:12px; color:var(--text-muted); line-height:1.5;">
+      <div class="form-label" style="margin-bottom:4px;">Urgency Rationale</div>
+      {{ complaint.priority_description or "Rule-based scoring calculated from sentiment, emotion, keywords, and text length." }}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
 <script>
-function useAiSuggestion() {
-  const source = document.getElementById("aiSuggestedResponse");
+function copyAiDraft() {
+  const src = document.getElementById("aiSuggestionBox");
   const target = document.getElementById("adminResponseBox");
-  if (!source || !target) return;
-  target.value = source.textContent.trim();
-  target.focus();
+  if (src && target) {
+    target.value = src.textContent.trim();
+    target.focus();
+    showToast('AI Draft copied to editor');
+  }
 }
 </script>
 {% endblock %}

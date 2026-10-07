@@ -1,0 +1,7 @@
+{
+  "boot_0": "Likely caused by billing domain operational issue requiring investigation.",
+  "boot_1": "Likely caused by auth domain operational issue requiring investigation.",
+  "boot_2": "Likely caused by delivery domain operational issue requiring investigation.",
+  "boot_3": "Likely caused by customer_service domain operational issue requiring investigation.",
+  "boot_4": "Likely caused by technical domain operational issue requiring investigation."
+}

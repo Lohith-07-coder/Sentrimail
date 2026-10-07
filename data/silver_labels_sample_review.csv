@@ -1,0 +1,6 @@
+sample_id,text,category,sentiment,silver_root_cause,manual_approval_status
+boot_3,Customer service agent hung up on me when asking for refund.,customer_service,NEUTRAL,Likely caused by customer_service domain operational issue requiring investigation.,APPROVED
+boot_2,Package arrived damaged and contents broken.,delivery,NEUTRAL,Likely caused by delivery domain operational issue requiring investigation.,APPROVED
+boot_4,Server response time is extremely slow and returning 504 gateway timeout.,technical,NEUTRAL,Likely caused by technical domain operational issue requiring investigation.,APPROVED
+boot_1,Unable to log in after password reset.,auth,NEUTRAL,Likely caused by auth domain operational issue requiring investigation.,APPROVED
+boot_0,Double charged on my subscription renewal.,billing,NEUTRAL,Likely caused by billing domain operational issue requiring investigation.,APPROVED

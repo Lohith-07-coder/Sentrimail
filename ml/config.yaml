@@ -1,0 +1,70 @@
+# SentriMail Multi-Task Model & Pipeline Configuration
+
+model:
+  base_model: "google/flan-t5-base"
+  use_lora: true
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules: ["q", "v"]
+  max_source_length: 512
+  max_target_length: 128
+
+tasks:
+  message_type:
+    num_classes: 5
+    classes: ["complaint", "query", "praise", "suggestion", "spam_abuse"]
+    weight: 1.0
+  category:
+    num_classes: 7
+    classes: ["billing", "technical", "delivery", "customer_service", "product", "refund", "other"]
+    weight: 1.0
+  issue:
+    num_classes: 6
+    classes: ["billing", "auth", "technical", "delivery", "support", "general"]
+    weight: 1.0
+  sentiment:
+    num_classes: 3
+    classes: ["POSITIVE", "NEUTRAL", "NEGATIVE"]
+    weight: 1.0
+  emotion:
+    num_classes: 7
+    classes: ["anger", "fear", "sadness", "disgust", "surprise", "joy", "neutral"]
+    weight: 1.0
+  root_cause_seq2seq:
+    task_prefix: "generate root cause: "
+    weight: 2.0
+  response_seq2seq:
+    task_prefix: "generate response: "
+    weight: 2.0
+
+data:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  silver_labels_cache: "data/silver_labels_cache.json"
+  silver_labels_sample_csv: "data/silver_labels_sample_review.csv"
+  train_split: 0.80
+  val_split: 0.10
+  test_split: 0.10
+  random_seed: 42
+  dataset_flags:
+    use_kaggle: true
+    use_cfpb: true
+    use_bitext: true
+    use_banking77: true
+    use_goemotions: true
+    use_sms_jigsaw: true
+    use_massive: true
+
+retrieval:
+  embedding_model: "all-MiniLM-L6-v2"
+  faiss_index_path: "data/faiss_index.bin"
+  metadata_path: "data/faiss_metadata.json"
+  top_k: 3
+  min_similarity_score: 0.45
+
+safety_gating:
+  min_confidence_auto_send: 0.85
+  min_confidence_classification: 0.60
+  allowed_auto_send_types: ["complaint", "query", "suggestion"]
+  blocked_auto_send_types: ["spam_abuse"]

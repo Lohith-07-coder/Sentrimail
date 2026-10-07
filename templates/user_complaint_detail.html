@@ -1,56 +1,145 @@
 {% extends "base.html" %}
-{% block title %}My Complaint #{{ complaint.id }} — SentriMail{% endblock %}
+{% block title %}Ticket #{{ complaint.complaint_code or complaint.id }} — SentriMail{% endblock %}
 
 {% block nav_links %}
-<a href="/user/dashboard" class="nav-link">← Back to Dashboard</a>
-<a href="/user/submit" class="nav-link">Submit Complaint</a>
+<a href="/user/dashboard" class="nav-item">← Back to Dashboard</a>
+<a href="/user/submit" class="nav-item">Submit Complaint</a>
 {% endblock %}
 
 {% block content %}
-<div class="fade-up">
-  <div style="margin-bottom:24px">
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px">
-      <span class="mono" style="color:var(--blue);font-size:16px">#{{ complaint.id }}</span>
-      <span class="status-badge status-{{ complaint.status }}">
-        {{ complaint.status | replace('_', ' ') | title }}
+<div class="page-header">
+  <div>
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:8px;">
+      <span class="mono-id" onclick="copyToClipboard('{{ complaint.complaint_code or complaint.id }}', event)">
+        #{{ complaint.complaint_code or complaint.id }} 📋
+      </span>
+      
+      {% set s = complaint.status | default('pending') %}
+      <span class="badge {% if s in ['resolved', 'auto_replied'] %}status-resolved{% elif s == 'in_progress' %}status-in_progress{% elif s == 'rejected' %}status-rejected{% else %}status-pending{% endif %}">
+        {{ s | replace('_', ' ') | title }}
+      </span>
+
+      {% set p = complaint.priority | default('LOW') %}
+      <span class="badge {% if p == 'CRITICAL' %}priority-CRITICAL{% elif p == 'HIGH' %}priority-HIGH{% elif p == 'MEDIUM' %}priority-MEDIUM{% else %}priority-LOW{% endif %}">
+        {{ p }} Urgency
       </span>
     </div>
-    <h1 style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;letter-spacing:-0.01em;margin-bottom:6px">
-      {{ complaint.title }}
-    </h1>
-    <div style="font-size:12px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap">
-      <span>📂 {{ complaint.category | title }}</span>
-      <span>📅 {{ complaint.created_at[:10] }}</span>
+
+    <h1 class="page-title">{{ complaint.title }}</h1>
+    <div class="page-sub">
+      Category: <strong style="color:var(--text)">{{ complaint.category | title }}</strong> &nbsp;•&nbsp; 
+      Submitted: <span class="mono">{{ complaint.created_at[:10] if complaint.created_at else 'N/A' }}</span>
+    </div>
+  </div>
+  <a href="/user/dashboard" class="btn btn-outline btn-sm">← All Complaints</a>
+</div>
+
+<!-- Lifecycle Status Timeline -->
+<div class="panel">
+  <div class="timeline">
+    <div class="timeline-step completed">
+      <div class="timeline-dot">✓</div>
+      <div class="timeline-label">Submitted</div>
+    </div>
+    
+    <div class="timeline-step {% if complaint.status != 'pending' %}completed{% else %}active{% endif %}">
+      <div class="timeline-dot">{% if complaint.status != 'pending' %}✓{% else %}2{% endif %}</div>
+      <div class="timeline-label">AI Triage</div>
+    </div>
+
+    <div class="timeline-step {% if complaint.status in ['in_progress', 'resolved', 'auto_replied'] %}{% if complaint.status == 'in_progress' %}active{% else %}completed{% endif %}{% endif %}">
+      <div class="timeline-dot">{% if complaint.status in ['resolved', 'auto_replied'] %}✓{% else %}3{% endif %}</div>
+      <div class="timeline-label">Agent Review</div>
+    </div>
+
+    <div class="timeline-step {% if complaint.status in ['resolved', 'auto_replied'] %}completed{% endif %}">
+      <div class="timeline-dot">{% if complaint.status in ['resolved', 'auto_replied'] %}✓{% else %}4{% endif %}</div>
+      <div class="timeline-label">Resolved</div>
+    </div>
+  </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: start;">
+  <!-- Main Column -->
+  <div>
+    <!-- Complaint Description / Translation Comparison -->
+    <div class="panel">
+      <div class="form-label" style="margin-bottom: 12px;">Submitted Complaint Narrative</div>
+      
+      {% if complaint.original_language and complaint.original_language != 'en' and complaint.original_text %}
+      <div class="comparison-grid">
+        <div>
+          <div class="form-label" style="font-size: 10px;">Original Text ({{ complaint.original_language | upper }})</div>
+          <div class="content-box">{{ complaint.original_text }}</div>
+        </div>
+        <div>
+          <div class="form-label" style="font-size: 10px;">English Translation</div>
+          <div class="content-box">{{ complaint.description }}</div>
+        </div>
+      </div>
+      {% else %}
+      <div class="content-box">{{ complaint.description }}</div>
+      {% endif %}
+    </div>
+
+    <!-- Official Support Response -->
+    <div class="panel">
+      <div class="form-label" style="margin-bottom: 12px;">Official Response from Support Team</div>
+      {% if complaint.admin_response %}
+        <div class="content-box" style="border-color: var(--status-resolved-border); background-color: var(--status-resolved-bg);">
+          {{ complaint.admin_response }}
+        </div>
+      {% elif complaint.status == 'in_progress' %}
+        <div class="alert alert-info">
+          ℹ️ An agent is actively working on your complaint. An official response will be posted here as soon as investigation completes.
+        </div>
+      {% else %}
+        <div class="helper-text" style="font-size: 13px;">
+          Your complaint is queued for review. You will receive an email notification once a support agent responds.
+        </div>
+      {% endif %}
     </div>
   </div>
 
-  <div class="card" style="margin-bottom:20px">
-    <div style="font-family:'DM Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:8px">
-      Complaint Description
+  <!-- Sidebar Info Card -->
+  <div class="panel">
+    <div class="form-label" style="margin-bottom: 12px;">Triage Metadata</div>
+    
+    <div style="margin-bottom: 16px;">
+      <div class="helper-text" style="margin-bottom: 4px;">Language</div>
+      <span class="chip">{{ complaint.original_language | default('en') | upper }}</span>
     </div>
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;font-size:14px;color:var(--subtle);line-height:1.8;white-space:pre-wrap">
-      {{ complaint.description }}
-    </div>
-  </div>
 
-  <div class="card">
-    <div style="font-family:'DM Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:8px">
-      Response From Support
+    {% if complaint.sentiment_label %}
+    <div style="margin-bottom: 16px;">
+      <div class="helper-text" style="margin-bottom: 4px;">Detected Sentiment & Emotion</div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <span class="chip {% if complaint.sentiment_label == 'NEGATIVE' %}chip-negative{% elif complaint.sentiment_label == 'POSITIVE' %}chip-positive{% endif %}">
+          {{ complaint.sentiment_label }}
+        </span>
+        {% if complaint.emotion_label %}
+        <span class="chip">{{ complaint.emotion_label | title }}</span>
+        {% endif %}
+      </div>
     </div>
-    {% if complaint.admin_response %}
-      <div style="background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.15);border-radius:10px;padding:16px;font-size:13px;color:var(--subtle);line-height:1.7;white-space:pre-wrap;font-family:'DM Mono',monospace">
-        {{ complaint.admin_response }}
-      </div>
-    {% elif complaint.priority == 'LOW' %}
-      <div style="font-size:12px;color:var(--muted);line-height:1.6">
-        Your complaint was classified as <strong>LOW priority</strong>. An automatic reply has been prepared and will appear here shortly.
-      </div>
-    {% else %}
-      <div style="font-size:12px;color:var(--muted);line-height:1.6">
-        Our team is reviewing your complaint. You’ll see the official response here once it’s ready.
-      </div>
     {% endif %}
+
+    {% if complaint.priority_score %}
+    <div style="margin-bottom: 16px;">
+      <div style="display:flex; justify-content:space-between; font-size:11px;" class="mono">
+        <span style="color:var(--text-subtle);">Computed Priority Score</span>
+        <span style="font-weight:600;">{{ complaint.priority_score }} / 100</span>
+      </div>
+      <div class="meter-bg">
+        <div class="meter-bar" style="width: {{ complaint.priority_score }}%;"></div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div>
+      <div class="helper-text" style="margin-bottom: 4px;">Tracking ID</div>
+      <div class="mono" style="color:var(--text-muted); word-break:break-all;">{{ complaint.id }}</div>
+    </div>
   </div>
 </div>
 {% endblock %}
-

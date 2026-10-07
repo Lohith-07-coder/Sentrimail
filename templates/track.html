@@ -1,62 +1,100 @@
 {% extends "base.html" %}
-{% block title %}Track Complaint — SentriMail{% endblock %}
+{% block title %}Track Complaint Status — SentriMail{% endblock %}
+
+{% block nav_links %}
+{% if user %}
+<a href="/user/dashboard" class="nav-item">Dashboard</a>
+<a href="/user/submit" class="nav-item">Submit Complaint</a>
+{% endif %}
+<a href="/track" class="nav-item active">Track Code</a>
+{% endblock %}
 
 {% block content %}
-<div class="fade-up" style="max-width: 600px; margin: 0 auto;">
-  <div class="section-header" style="text-align: center;">
-    <div>
-      <div class="section-title">Track Complaint Status</div>
-      <div class="section-sub">Enter your complaint tracking code below.</div>
-    </div>
+<div style="max-width: 640px; margin: 0 auto;">
+  <div class="page-header" style="text-align: center; display: block; margin-bottom: 24px;">
+    <h1 class="page-title">Track Complaint Status</h1>
+    <p class="page-sub">Enter your tracking code to view live resolution updates without logging in.</p>
   </div>
 
-  <div class="card fade-up-1">
+  <div class="panel">
     <form method="POST" action="/track">
       <div class="form-group">
-        <label class="form-label">Tracking Code</label>
-        <input type="text" name="complaint_code" class="form-control" placeholder="SENT-YYYY-XXXX" required>
+        <label class="form-label" for="trackingInput">Complaint Tracking Code</label>
+        <input type="text" id="trackingInput" name="complaint_code" class="form-input" placeholder="e.g. SENT-2026-0A92551E" required style="font-family: var(--font-mono); text-transform: uppercase;">
+        <div class="helper-text">Enter the unique code generated when your complaint was submitted.</div>
       </div>
-      <button type="submit" class="btn btn-primary" style="width:100%">Search</button>
+      <button type="submit" class="btn btn-primary" style="width:100%;">Search Ticket</button>
     </form>
   </div>
 
   {% if error %}
-  <div class="alert alert-danger" style="margin-top: 20px;">
-    {{ error }}
+  <div class="alert alert-error">
+    ⚠️ {{ error }}
   </div>
   {% endif %}
 
   {% if complaint %}
-  <div class="card fade-up-2" style="margin-top:20px;">
-    <h3 style="margin-bottom:15px; font-family:'Syne',sans-serif;">Complaint Details</h3>
-    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
-      <span style="color:var(--muted); font-size:12px;">Submitted On:</span>
-      <span class="mono">{{ complaint.created_at[:10] }}</span>
-    </div>
-    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
-      <span style="color:var(--muted); font-size:12px;">Status:</span>
-      <span class="status-badge status-{{ complaint.status }}">
-        {{ complaint.status | replace('_', ' ') | title }}
+  {% set code_display = complaint.complaint_code or complaint.id %}
+  {% set s = complaint.status | default('pending') %}
+  {% set p = complaint.priority | default('LOW') %}
+
+  <div class="panel">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid var(--border); padding-bottom:12px;">
+      <div>
+        <div class="form-label" style="margin-bottom:2px;">Ticket Status Record</div>
+        <div class="mono-id" onclick="copyToClipboard('{{ code_display }}', event)">#{{ code_display }} 📋</div>
+      </div>
+      <span class="badge {% if s in ['resolved', 'auto_replied'] %}status-resolved{% elif s == 'in_progress' %}status-in_progress{% elif s == 'rejected' %}status-rejected{% else %}status-pending{% endif %}">
+        {{ s | replace('_', ' ') | title }}
       </span>
     </div>
-    <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
-      <span style="color:var(--muted); font-size:12px;">Priority:</span>
-      <span class="priority-badge priority-{{ complaint.priority }}">
-        {% if complaint.priority == 'CRITICAL' %}🔴{% elif complaint.priority == 'HIGH' %}🟠{% elif complaint.priority == 'MEDIUM' %}🟡{% else %}🟢{% endif %}
-        {{ complaint.priority }}
+
+    <!-- Timeline View -->
+    <div class="timeline" style="margin: 20px 0;">
+      <div class="timeline-step completed">
+        <div class="timeline-dot">✓</div>
+        <div class="timeline-label">Submitted</div>
+      </div>
+      <div class="timeline-step {% if s != 'pending' %}completed{% else %}active{% endif %}">
+        <div class="timeline-dot">{% if s != 'pending' %}✓{% else %}2{% endif %}</div>
+        <div class="timeline-label">AI Triage</div>
+      </div>
+      <div class="timeline-step {% if s in ['in_progress', 'resolved', 'auto_replied'] %}{% if s == 'in_progress' %}active{% else %}completed{% endif %}{% endif %}">
+        <div class="timeline-dot">{% if s in ['resolved', 'auto_replied'] %}✓{% else %}3{% endif %}</div>
+        <div class="timeline-label">Review</div>
+      </div>
+      <div class="timeline-step {% if s in ['resolved', 'auto_replied'] %}completed{% endif %}">
+        <div class="timeline-dot">{% if s in ['resolved', 'auto_replied'] %}✓{% else %}4{% endif %}</div>
+        <div class="timeline-label">Resolved</div>
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:13px;">
+      <span style="color:var(--text-muted)">Subject Title:</span>
+      <strong style="color:var(--text)">{{ complaint.title }}</strong>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:13px;">
+      <span style="color:var(--text-muted)">Submitted On:</span>
+      <span class="mono">{{ complaint.created_at[:10] if complaint.created_at else 'N/A' }}</span>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; margin-bottom:16px; font-size:13px;">
+      <span style="color:var(--text-muted)">Priority:</span>
+      <span class="badge {% if p == 'CRITICAL' %}priority-CRITICAL{% elif p == 'HIGH' %}priority-HIGH{% elif p == 'MEDIUM' %}priority-MEDIUM{% else %}priority-LOW{% endif %}">
+        {{ p }}
       </span>
     </div>
 
     {% if complaint.admin_response %}
-    <div style="margin-top:20px; border-top: 1px solid var(--border); padding-top:15px;">
-      <span style="color:var(--muted); font-size:12px; display:block; margin-bottom:8px;">Response:</span>
-      <div style="background:var(--surface2); padding:12px; border-radius:8px; font-size:14px; color:var(--text);">
+    <div style="margin-top:16px; border-top: 1px solid var(--border); padding-top:14px;">
+      <div class="form-label" style="margin-bottom:6px; color:var(--status-resolved);">Support Response</div>
+      <div class="content-box" style="background-color:var(--status-resolved-bg); border-color:var(--status-resolved-border);">
         {{ complaint.admin_response }}
       </div>
     </div>
     {% endif %}
   </div>
   {% endif %}
-
 </div>
 {% endblock %}

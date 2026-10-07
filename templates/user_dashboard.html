@@ -1,91 +1,172 @@
 {% extends "base.html" %}
-{% block title %}My Dashboard — SentriMail{% endblock %}
+{% block title %}My Complaints — SentriMail{% endblock %}
 
 {% block nav_links %}
-<a href="/user/dashboard" class="nav-link">Dashboard</a>
-<a href="/user/submit" class="nav-link">Submit Complaint</a>
+<a href="/user/dashboard" class="nav-item active">Dashboard</a>
+<a href="/user/submit" class="nav-item">Submit Complaint</a>
+<a href="/track" class="nav-item">Track Code</a>
 {% endblock %}
 
 {% block content %}
-<div class="fade-up">
-  <div class="section-header">
-    <div>
-      <div class="section-title">My Complaints</div>
-      <div class="section-sub">Track and manage your submitted complaints</div>
-    </div>
-    <a href="/user/submit" class="btn btn-primary">+ New Complaint</a>
+<div class="page-header">
+  <div>
+    <h1 class="page-title">My Complaints</h1>
+    <p class="page-sub">Track real-time resolution status and manage your submitted support tickets</p>
   </div>
+  <a href="/user/submit" class="btn btn-primary">+ New Complaint</a>
+</div>
 
-  <div class="stat-grid fade-up-1">
-    <div class="stat-card stat-blue">
-      <div class="stat-value">{{ total }}</div>
-      <div class="stat-label">Total Submitted</div>
-    </div>
-    <div class="stat-card stat-amber">
-      <div class="stat-value">{{ pending }}</div>
-      <div class="stat-label">Pending</div>
-    </div>
-    <div class="stat-card stat-green">
-      <div class="stat-value">{{ resolved }}</div>
-      <div class="stat-label">Resolved</div>
-    </div>
+<!-- 3 Equal Summary Cards -->
+<div class="stat-grid">
+  <div class="stat-card stat-blue">
+    <div class="stat-value">{{ total }}</div>
+    <div class="stat-label">Total Submitted</div>
   </div>
-
-  <div class="card fade-up-2">
-    {% if complaints %}
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Title</th>
-            <th>Category</th>
-            <th>Status</th>
-            <th>Date</th>
-            <th>Response</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for c in complaints %}
-          <tr>
-            <td>
-              <a href="/user/complaint/{{ c.id }}" class="mono" style="color:var(--blue);text-decoration:none">
-                #{{ c.id }}
-              </a>
-            </td>
-            <td class="td-title" title="{{ c.title }}">
-              <a href="/user/complaint/{{ c.id }}" style="color:inherit;text-decoration:none">
-                {{ c.title }}
-              </a>
-            </td>
-            <td><span style="color:var(--subtle);font-size:12px">{{ c.category | title }}</span></td>
-            <td>
-              <span class="status-badge status-{{ c.status }}">
-                {{ c.status | replace('_', ' ') | title }}
-              </span>
-            </td>
-            <td><span class="mono">{{ c.created_at[:10] }}</span></td>
-            <td>
-              {% if c.admin_response %}
-                <span style="font-size:11px;color:var(--subtle)">View</span>
-              {% else %}
-                <span style="font-size:11px;color:var(--muted)">Pending</span>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <div class="empty-state">
-      <div class="empty-icon">📭</div>
-      <div class="empty-title">No complaints yet</div>
-      <div class="empty-desc">Submit your first complaint to get started</div>
-      <br>
-      <a href="/user/submit" class="btn btn-primary" style="display:inline-flex">+ Submit Complaint</a>
-    </div>
-    {% endif %}
+  <div class="stat-card stat-amber">
+    <div class="stat-value">{{ pending }}</div>
+    <div class="stat-label">Pending Review</div>
+  </div>
+  <div class="stat-card stat-green">
+    <div class="stat-value">{{ resolved }}</div>
+    <div class="stat-label">Resolved</div>
   </div>
 </div>
+
+<!-- Toolbar: Search, Status Filter, Sort -->
+<div class="toolbar">
+  <div class="toolbar-group">
+    <input type="text" id="searchInput" class="search-input" placeholder="Search by title or ticket ID..." oninput="filterUserComplaints()">
+    
+    <select id="statusFilter" class="filter-select" onchange="filterUserComplaints()">
+      <option value="ALL">All Statuses</option>
+      <option value="pending">Pending</option>
+      <option value="in_progress">In Progress</option>
+      <option value="resolved">Resolved</option>
+      <option value="auto_replied">Auto-Replied</option>
+    </select>
+
+    <select id="sortSelect" class="sort-select" onchange="filterUserComplaints()">
+      <option value="newest">Sort: Newest First</option>
+      <option value="oldest">Sort: Oldest First</option>
+    </select>
+  </div>
+</div>
+
+<!-- Complaints Table Panel -->
+<div class="panel" style="padding: 0; overflow: hidden;">
+  {% if complaints %}
+  <div class="table-container">
+    <table class="data-table responsive-cards" id="userComplaintsTable">
+      <thead>
+        <tr>
+          <th>Ticket ID</th>
+          <th>Subject / Title</th>
+          <th>Category</th>
+          <th>Priority</th>
+          <th>Status</th>
+          <th>Submitted Date</th>
+          <th style="text-align: right;">Action</th>
+        </tr>
+      </thead>
+      <tbody id="userComplaintsBody">
+        {% for c in complaints %}
+        {% set code_display = c.complaint_code or c.id %}
+        <tr class="complaint-row"
+            data-id="{{ c.id }}"
+            data-code="{{ code_display }}"
+            data-title="{{ c.title | lower }}"
+            data-status="{{ c.status }}"
+            data-date="{{ c.created_at }}">
+          <data-label style="display:none;">Ticket ID</data-label>
+          <td data-label="Ticket ID">
+            <span class="mono-id" onclick="copyToClipboard('{{ code_display }}', event)" title="Click to copy full Ticket ID">
+              #{{ code_display[:10] }}{% if code_display|length > 10 %}…{% endif %}
+              <span class="copy-hint">📋</span>
+            </span>
+          </td>
+          <td data-label="Title" class="td-title" title="{{ c.title }}">
+            <a href="/user/complaint/{{ c.id }}" style="color:var(--text); font-weight:500;">
+              {{ c.title }}
+            </a>
+          </td>
+          <td data-label="Category">
+            <span class="chip">{{ c.category | default('general') | title }}</span>
+          </td>
+          <td data-label="Priority">
+            {% set p = c.priority | default('LOW') %}
+            <span class="badge {% if p == 'CRITICAL' %}priority-CRITICAL{% elif p == 'HIGH' %}priority-HIGH{% elif p == 'MEDIUM' %}priority-MEDIUM{% else %}priority-LOW{% endif %}">
+              {{ p }}
+            </span>
+          </td>
+          <td data-label="Status">
+            {% set s = c.status | default('pending') %}
+            <span class="badge {% if s in ['resolved', 'auto_replied'] %}status-resolved{% elif s == 'in_progress' %}status-in_progress{% elif s == 'rejected' %}status-rejected{% else %}status-pending{% endif %}">
+              {{ s | replace('_', ' ') | title }}
+            </span>
+          </td>
+          <td data-label="Date">
+            <span class="mono" style="color:var(--text-subtle)">{{ c.created_at[:10] if c.created_at else 'N/A' }}</span>
+          </td>
+          <td data-label="Action" style="text-align: right;">
+            <a href="/user/complaint/{{ c.id }}" class="btn btn-outline btn-sm">View</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="state-empty">
+    <div class="state-empty-icon">📭</div>
+    <div class="state-empty-title">No complaints submitted yet</div>
+    <div class="state-empty-desc">When you experience an issue or have feedback, submit a complaint here to get dedicated support assistance.</div>
+    <div style="margin-top: 16px;">
+      <a href="/user/submit" class="btn btn-primary">+ Submit First Complaint</a>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterUserComplaints() {
+  const query = document.getElementById('searchInput').value.toLowerCase().trim();
+  const status = document.getElementById('statusFilter').value;
+  const sortOrder = document.getElementById('sortSelect').value;
+  
+  const tbody = document.getElementById('userComplaintsBody');
+  if (!tbody) return;
+
+  let rows = Array.from(tbody.querySelectorAll('.complaint-row'));
+
+  rows.forEach(row => {
+    const title = row.dataset.title || '';
+    const code = (row.dataset.code || '').toLowerCase();
+    const id = (row.dataset.id || '').toLowerCase();
+    const rowStatus = row.dataset.status || '';
+
+    const matchesQuery = !query || title.includes(query) || code.includes(query) || id.includes(query);
+    const matchesStatus = (status === 'ALL') || 
+      (status === 'pending' && (rowStatus === 'pending' || rowStatus === 'pending_admin')) ||
+      (status === 'resolved' && (rowStatus === 'resolved' || rowStatus === 'auto_replied')) ||
+      (rowStatus === status);
+
+    if (matchesQuery && matchesStatus) {
+      row.style.display = '';
+    } else {
+      row.style.display = 'none';
+    }
+  });
+
+  // Sorting
+  rows.sort((a, b) => {
+    const dateA = new Date(a.dataset.date || 0);
+    const dateB = new Date(b.dataset.date || 0);
+    return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+  });
+
+  rows.forEach(r => tbody.appendChild(r));
+}
+</script>
 {% endblock %}

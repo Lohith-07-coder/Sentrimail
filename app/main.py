@@ -10,6 +10,7 @@ from pathlib import Path
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
@@ -47,6 +48,37 @@ app.include_router(user_router)
 app.include_router(admin_router)
 app.include_router(api_router)
 
+from fastapi import Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+templates = Jinja2Templates(directory=PROJECT_ROOT / "templates")
+
+
+@app.exception_handler(StarletteHTTPException)
+async def custom_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    if request.url.path.startswith("/api/"):
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    
+    titles = {
+        404: "Page Not Found",
+        403: "Access Denied",
+        500: "Internal Server Error"
+    }
+    return templates.TemplateResponse(
+        "error.html",
+        {
+            "request": request,
+            "user": auth_service.get_current_user(request),
+            "status_code": exc.status_code,
+            "title": titles.get(exc.status_code, "Error"),
+            "detail": exc.detail or "An unexpected error occurred."
+        },
+        status_code=exc.status_code
+    )
+
+
 # Configure background escalation scheduler
 scheduler = BackgroundScheduler()
 scheduler.add_job(escalate_complaints, 'interval', hours=1)
@@ -64,3 +96,4 @@ async def startup_event():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+

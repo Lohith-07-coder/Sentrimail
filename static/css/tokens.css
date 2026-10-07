@@ -1,0 +1,98 @@
+/* ==========================================
+   SentriMail Design Tokens — Enterprise Theme
+   ========================================== */
+
+:root {
+  /* Theme Colors */
+  --bg: #0F1419;
+  --surface: #161C24;
+  --surface-hover: #1F2733;
+  --surface-active: #2A3444;
+  --border: #232B36;
+  --border-subtle: #1B222C;
+  --border-focus: #3B82F6;
+
+  --text: #E6EAF0;
+  --text-muted: #8B96A5;
+  --text-subtle: #64748B;
+
+  /* Accent Color (Single Accent Rule) */
+  --accent: #3B82F6;
+  --accent-hover: #2563EB;
+  --accent-subtle: rgba(59, 130, 246, 0.12);
+  --accent-border: rgba(59, 130, 246, 0.3);
+
+  /* Status Colors */
+  --status-resolved: #10B981;
+  --status-resolved-bg: rgba(16, 185, 129, 0.12);
+  --status-resolved-border: rgba(16, 185, 129, 0.25);
+
+  --status-pending: #F59E0B;
+  --status-pending-bg: rgba(245, 158, 11, 0.12);
+  --status-pending-border: rgba(245, 158, 11, 0.25);
+
+  --status-progress: #3B82F6;
+  --status-progress-bg: rgba(59, 130, 246, 0.12);
+  --status-progress-border: rgba(59, 130, 246, 0.25);
+
+  --status-rejected: #EF4444;
+  --status-rejected-bg: rgba(239, 68, 68, 0.12);
+  --status-rejected-border: rgba(239, 68, 68, 0.25);
+
+  /* Priority Colors */
+  --priority-low: #8B96A5;
+  --priority-low-bg: rgba(139, 150, 165, 0.12);
+  --priority-low-border: rgba(139, 150, 165, 0.25);
+
+  --priority-medium: #3B82F6;
+  --priority-medium-bg: rgba(59, 130, 246, 0.12);
+  --priority-medium-border: rgba(59, 130, 246, 0.25);
+
+  --priority-high: #F97316;
+  --priority-high-bg: rgba(249, 115, 22, 0.12);
+  --priority-high-border: rgba(249, 115, 22, 0.25);
+
+  --priority-critical: #EF4444;
+  --priority-critical-bg: rgba(239, 68, 68, 0.12);
+  --priority-critical-border: rgba(239, 68, 68, 0.25);
+
+  /* Typography */
+  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+
+  /* Spacing Scale */
+  --space-4: 4px;
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-24: 24px;
+  --space-32: 32px;
+
+  /* Radius & Shadows */
+  --radius-sm: 4px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+
+  --max-width: 1200px;
+}
+
+/* Optional light theme preference override */
+@media (prefers-color-scheme: light) {
+  :root.theme-light {
+    --bg: #F8FAFC;
+    --surface: #FFFFFF;
+    --surface-hover: #F1F5F9;
+    --surface-active: #E2E8F0;
+    --border: #E2E8F0;
+    --border-subtle: #CBD5E1;
+    --border-focus: #2563EB;
+
+    --text: #0F172A;
+    --text-muted: #475569;
+    --text-subtle: #64748B;
+  }
+}

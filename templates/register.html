@@ -3,71 +3,48 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SentriMail — Register</title>
+<title>SentriMail — Create Account</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/tokens.css">
+<link rel="stylesheet" href="/static/css/base.css">
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-:root {
-  --bg: #070b12; --surface: #0c1220; --surface2: #111827;
-  --border: rgba(255,255,255,0.07);
-  --blue: #3b82f6; --purple: #8b5cf6; --rose: #f43f5e; --green: #10b981;
-  --text: #f1f5f9; --muted: #64748b; --subtle: #94a3b8;
-}
 body {
-  font-family: 'DM Sans', sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px 24px;
+  padding: 24px;
 }
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background: radial-gradient(ellipse 50% 60% at 50% 30%, rgba(59,130,246,0.06) 0%, transparent 60%);
-  pointer-events: none;
-}
-.register-box {
-  background: var(--surface);
+
+.auth-card {
+  background-color: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 40px 36px;
+  border-radius: var(--radius-lg);
   width: 100%;
   max-width: 420px;
-  position: relative;
+  padding: 32px;
+  box-shadow: var(--shadow-lg);
 }
-.brand { display: flex; align-items: center; gap: 10px; margin-bottom: 32px; text-decoration: none; }
-.brand-logo { width: 36px; height: 36px; background: linear-gradient(135deg, var(--blue), var(--purple)); border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
-.brand-name { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 20px; background: linear-gradient(135deg, #fff, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-.title { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; margin-bottom: 6px; }
-.sub { font-size: 13px; color: var(--muted); margin-bottom: 28px; }
-.form-group { margin-bottom: 16px; }
-.form-label { display: block; font-size: 11px; font-weight: 500; color: var(--subtle); margin-bottom: 6px; font-family: 'DM Mono', monospace; letter-spacing: 0.06em; text-transform: uppercase; }
-.form-control { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 11px 14px; color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 14px; outline: none; transition: border-color 0.2s; }
-.form-control:focus { border-color: var(--blue); }
-.form-control::placeholder { color: var(--muted); }
-.btn { width: 100%; padding: 13px; background: linear-gradient(135deg, var(--blue), #2563eb); color: white; border: none; border-radius: 10px; font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 8px; transition: all 0.2s; }
-.btn:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(59,130,246,0.3); }
-.alert { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
-.alert-error { background: rgba(244,63,94,0.1); border: 1px solid rgba(244,63,94,0.25); color: #fca5a5; }
-.alert-success { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25); color: #6ee7b7; }
-.login-link { margin-top: 20px; text-align: center; font-size: 13px; color: var(--muted); }
-.login-link a { color: var(--blue); text-decoration: none; font-weight: 500; }
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 24px;
+}
 </style>
 </head>
 <body>
-<div class="register-box">
-  <a href="/" class="brand">
-    <div class="brand-logo">🛡️</div>
+
+<div class="auth-card">
+  <a href="/" class="auth-brand">
+    <div class="brand-mark">S</div>
     <span class="brand-name">SentriMail</span>
   </a>
 
-  <div class="title">Create account</div>
-  <div class="sub">Join SentriMail to submit and track complaints</div>
+  <h1 style="font-size: 20px; margin-bottom: 4px;">Create Account</h1>
+  <p class="page-sub" style="margin-bottom: 24px;">Register for a SentriMail account to submit and track support complaints</p>
 
   {% if error %}<div class="alert alert-error">⚠️ {{ error }}</div>{% endif %}
   {% if success %}<div class="alert alert-success">✅ {{ success }}</div>{% endif %}
@@ -75,20 +52,28 @@ body::before {
   <form method="POST" action="/register">
     <div class="form-group">
       <label class="form-label">Username</label>
-      <input type="text" name="username" class="form-control" placeholder="Choose a username" required>
+      <input type="text" name="username" class="form-input" placeholder="Choose a username" required autofocus>
     </div>
+
     <div class="form-group">
-      <label class="form-label">Email</label>
-      <input type="email" name="email" class="form-control" placeholder="your@email.com" required>
+      <label class="form-label">Email Address</label>
+      <input type="email" name="email" class="form-input" placeholder="your.name@company.com" required>
     </div>
+
     <div class="form-group">
       <label class="form-label">Password</label>
-      <input type="password" name="password" class="form-control" placeholder="Min. 6 characters" required>
+      <input type="password" name="password" class="form-input" placeholder="Min. 6 characters" required>
     </div>
-    <button type="submit" class="btn">Create Account →</button>
+
+    <button type="submit" class="btn btn-primary btn-lg" style="width: 100%; margin-top: 8px;">
+      Create Account →
+    </button>
   </form>
 
-  <div class="login-link">Already have an account? <a href="/login">Sign in</a></div>
+  <div style="margin-top: 24px; text-align: center; font-size: 13px; color: var(--text-muted);">
+    Already have an account? <a href="/login" style="color: var(--accent); font-weight: 500;">Sign in</a>
+  </div>
 </div>
+
 </body>
 </html>

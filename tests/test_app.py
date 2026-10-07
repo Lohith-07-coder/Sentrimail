@@ -39,7 +39,7 @@ def test_ai_service_analysis():
 
 
 def test_public_routes():
-    """Verify public endpoints return expected HTTP status codes."""
+    """Verify public endpoints and static assets return expected HTTP status codes."""
     client = TestClient(app)
 
     # Root redirects to /login when unauthenticated
@@ -50,7 +50,7 @@ def test_public_routes():
     # Login page renders HTML
     response = client.get("/login")
     assert response.status_code == 200
-    assert "SentriMail" in response.text or "login" in response.text.lower()
+    assert "SentriMail" in response.text
 
     # Register page renders HTML
     response = client.get("/register")
@@ -59,3 +59,48 @@ def test_public_routes():
     # Track page renders HTML
     response = client.get("/track")
     assert response.status_code == 200
+
+    # Static CSS tokens and base stylesheets exist and serve 200
+    res_tokens = client.get("/static/css/tokens.css")
+    assert res_tokens.status_code == 200
+    assert "--bg" in res_tokens.text
+
+    res_base = client.get("/static/css/base.css")
+    assert res_base.status_code == 200
+    assert ".header" in res_base.text
+
+
+def test_authenticated_user_and_admin_flows():
+    """Test user login, dashboard rendering, complaint detail, and admin queue."""
+    client = TestClient(app)
+
+    # Login as User
+    res_login = client.post("/login", data={"username": "alice", "password": "alice123"}, follow_redirects=True)
+    assert res_login.status_code == 200
+    assert "My Complaints" in res_login.text
+
+    # User Dashboard
+    res_user = client.get("/user/dashboard")
+    assert res_user.status_code == 200
+    assert "Total Submitted" in res_user.text
+
+    # Submit Page
+    res_submit = client.get("/user/submit")
+    assert res_submit.status_code == 200
+    assert "Submit a Support Complaint" in res_submit.text
+
+    # Login as Admin
+    client_admin = TestClient(app)
+    client_admin.post("/login", data={"username": "admin", "password": "admin123"}, follow_redirects=True)
+
+    # Admin Dashboard
+    res_admin = client_admin.get("/admin/dashboard")
+    assert res_admin.status_code == 200
+    assert "Complaint Triage Inbox" in res_admin.text
+    assert "SLA Timer" in res_admin.text
+
+    # Admin Users
+    res_users = client_admin.get("/admin/users")
+    assert res_users.status_code == 200
+    assert "Registered System Users" in res_users.text
+

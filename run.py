@@ -29,9 +29,11 @@ if __name__ == "__main__":
     except UnicodeEncodeError:
         print("  SentriMail - AI Complaint Management")
     print("="*50)
-    print(f" -> Running on port {os.environ.get('PORT', 8000)}")
-    print("  → Admin:  admin / admin123")
-    print("  → User:   alice / alice123  |  bob / bob123")
+    port = os.environ.get('PORT', 8000)
+    print(f" -> Access in browser: http://localhost:{port}")
+    print(f" -> Alternative URL:   http://127.0.0.1:{port}")
+    print("  -> Admin login:     admin / admin123")
+    print("  -> User login:      alice / alice123  |  bob / bob123")
     print("="*50 + "\n")
 
     uvicorn.run(

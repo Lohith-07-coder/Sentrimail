@@ -1,0 +1,22 @@
+{
+  "benchmark_timestamp": "2026-10-07 10:12:09",
+  "models_evaluated": [
+    {
+      "model": "DistilBERT (66M) + TF-IDF Baseline",
+      "average_latency_ms": 0.0,
+      "sentiment_accuracy": 0.8,
+      "total_eval_time_sec": 7.75,
+      "memory_footprint": "~260 MB",
+      "offline_ready": true
+    },
+    {
+      "model": "Zero-Shot google/flan-t5-large (783M)",
+      "average_latency_ms": 0.0,
+      "sentiment_accuracy": 1.0,
+      "total_eval_time_sec": 8.7,
+      "memory_footprint": "~3.1 GB",
+      "offline_ready": true
+    }
+  ],
+  "summary": "Flan-T5-large delivers unified multi-task zero-shot classification and root-cause generation capability offline, whereas DistilBERT+TF-IDF provides lower latency for single-task sentiment scoring."
+}

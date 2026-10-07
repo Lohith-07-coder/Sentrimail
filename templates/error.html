@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ status_code }} — {{ title | default('Error') }}{% endblock %}
+
+{% block content %}
+<div class="state-empty" style="max-width: 600px; margin: 40px auto;">
+  <div class="mono" style="font-size: 48px; font-weight: 700; color: var(--accent); margin-bottom: 12px;">
+    {{ status_code }}
+  </div>
+  <h1 class="page-title" style="margin-bottom: 8px;">{{ title | default('An error occurred') }}</h1>
+  <p class="state-empty-desc" style="margin-bottom: 24px;">
+    {{ detail | default('The page or resource you requested could not be processed.') }}
+  </p>
+  <div>
+    <a href="/" class="btn btn-primary">Return to Home</a>
+  </div>
+</div>
+{% endblock %}
