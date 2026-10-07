@@ -15,6 +15,16 @@ import re
 from pathlib import Path
 from typing import Any, Dict
 
+try:
+    from langdetect import detect
+except ImportError:
+    def detect(text): return "en"
+
+try:
+    from deep_translator import GoogleTranslator
+except ImportError:
+    GoogleTranslator = None
+
 from app.core.priority import calculate_priority
 
 logger = logging.getLogger(__name__)
@@ -225,6 +235,49 @@ def infer_category_and_issue(text: str, category: str = "other") -> tuple[str, s
     return best_category, _infer_issue_type(text, best_category), terms
 
 
+def _infer_intent(category: str, issue: str, text: str) -> dict[str, Any]:
+    text_lower = text.lower()
+    if "refund" in text_lower or "chargeback" in text_lower:
+        return {"label": "request_refund", "confidence": 0.85}
+    if "cancel" in text_lower and ("subscription" in text_lower or "account" in text_lower):
+        return {"label": "cancel_subscription", "confidence": 0.8}
+    if issue == "auth":
+        return {"label": "recover_account", "confidence": 0.8}
+    if category == "technical":
+        return {"label": "report_technical_issue", "confidence": 0.75}
+    if category == "delivery":
+        return {"label": "track_package", "confidence": 0.75}
+    if category == "billing":
+        return {"label": "dispute_charge", "confidence": 0.75}
+    return {"label": "general_inquiry", "confidence": 0.5}
+
+def _extract_entities(text: str) -> list[dict[str, str]]:
+    entities = []
+    for match in re.finditer(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text):
+        entities.append({"type": "email", "value": match.group(0)})
+    for match in re.finditer(r"\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b", text):
+        entities.append({"type": "phone", "value": match.group(0)})
+    for match in re.finditer(r"(?i)\b(?:order|ticket|ref|reference|complaint)[\s#:]+([A-Z0-9-]+)\b", text):
+        entities.append({"type": "reference_id", "value": match.group(1)})
+    for match in re.finditer(r"\$\s?\d+(?:\.\d{2})?", text):
+        entities.append({"type": "money", "value": match.group(0)})
+    return entities
+
+def _detect_and_translate(text: str) -> tuple[str, str]:
+    if not text.strip():
+        return "en", text
+    try:
+        lang = detect(text)
+    except Exception:
+        lang = "en"
+    if lang != "en" and GoogleTranslator is not None:
+        try:
+            translated = GoogleTranslator(source='auto', target='en').translate(text)
+            return lang, translated
+        except Exception:
+            return lang, text
+    return "en", text
+
 def _load_models() -> None:
     global _sentiment_pipeline, _emotion_pipeline, _generative_pipeline, _models_loaded, _use_transformers
     if _models_loaded:
@@ -427,28 +480,34 @@ def analyze_complaint(
 ) -> Dict[str, Any]:
     _load_models()
 
+    language, translated_text = _detect_and_translate(text)
+    analysis_text = translated_text if translated_text else text
+
     if _use_transformers and _sentiment_pipeline:
         try:
-            raw = _sentiment_pipeline(text[:512])[0]
+            raw = _sentiment_pipeline(analysis_text[:512])[0]
             sentiment = {"label": raw["label"], "score": round(raw["score"], 3)}
         except Exception:
-            sentiment = _rule_based_sentiment(text)
+            sentiment = _rule_based_sentiment(analysis_text)
     else:
-        sentiment = _rule_based_sentiment(text)
+        sentiment = _rule_based_sentiment(analysis_text)
 
     if _use_transformers and _emotion_pipeline:
         try:
-            raw = _emotion_pipeline(text[:512])[0]
+            raw = _emotion_pipeline(analysis_text[:512])[0]
             emotion = {"label": raw["label"], "score": round(raw["score"], 3)}
         except Exception:
-            emotion = _rule_based_emotion(text)
+            emotion = _rule_based_emotion(analysis_text)
     else:
-        emotion = _rule_based_emotion(text)
+        emotion = _rule_based_emotion(analysis_text)
 
-    inferred_category, issue, category_terms = infer_category_and_issue(text, category)
+    inferred_category, issue, category_terms = infer_category_and_issue(analysis_text, category)
+    intent_data = _infer_intent(inferred_category, issue, analysis_text)
+    entities = _extract_entities(analysis_text)
+
     priority_data = calculate_priority(
         sentiment_label=sentiment["label"], sentiment_score=sentiment["score"],
-        emotion_label=emotion["label"], emotion_score=emotion["score"], text=text,
+        emotion_label=emotion["label"], emotion_score=emotion["score"], text=analysis_text,
         category=inferred_category, issue=issue, history=history,
         created_at=created_at, status=status,
     )
@@ -456,10 +515,10 @@ def analyze_complaint(
         "CRITICAL": "#ef4444", "HIGH": "#f97316", "MEDIUM": "#eab308", "LOW": "#22c55e",
     }
     priority_data["priority_color"] = priority_colors[priority_data["priority"]]
-    auto_resolvable = _is_auto_resolvable(priority_data["priority"], text, sentiment)
+    auto_resolvable = _is_auto_resolvable(priority_data["priority"], analysis_text, sentiment)
 
     dataset_suggestion = _predict_response_from_dataset(
-        text=text,
+        text=analysis_text,
         username=username,
         category=inferred_category,
         priority=priority_data["priority"],
@@ -470,25 +529,31 @@ def analyze_complaint(
     admin_suggestion = dataset_suggestion or _generate_admin_suggestion(
         priority=priority_data["priority"],
         username=username,
-        text=text,
+        text=analysis_text,
         category=inferred_category,
     )
     auto_response = (dataset_suggestion or _generate_auto_user_response(
         username=username, 
-        text=text, 
+        text=analysis_text, 
         category=inferred_category,
         sentiment_score=sentiment["score"], 
-        original_language="en"
+        original_language=language
     )) if auto_resolvable else ""
 
     return {
+        "language": language,
+        "translated_text": translated_text if language != "en" else "",
         "sentiment_label": sentiment["label"],
         "sentiment_score": sentiment["score"],
         "emotion_label": emotion["label"].capitalize(),
         "emotion_score": emotion["score"],
         **priority_data,
+        "urgency": priority_data.get("urgency_indicators", []),
         "category": inferred_category,
         "issue": issue,
+        "intent": intent_data["label"],
+        "intent_confidence": intent_data["confidence"],
+        "entities": entities,
         "category_indicators": category_terms,
         "root_cause_summary": _generate_root_cause(inferred_category, emotion["label"].lower()),
         "auto_resolvable": auto_resolvable,

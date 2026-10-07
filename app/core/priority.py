@@ -3,6 +3,13 @@
 This module deliberately uses rules rather than a learned priority model: the
 application has no labelled historical severity outcomes suitable for training.
 Every score returned here is the sum of the listed feature contributions.
+
+Priority Bands
+--------------
+    CRITICAL : score >= 75  OR  any emergency keyword present
+    HIGH     : 45 <= score < 75
+    MEDIUM   : 20 <= score < 45
+    LOW      : score < 20
 """
 
 from __future__ import annotations
@@ -10,6 +17,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+
+# ── Keyword sets ────────────────────────────────────────────────────────────
 
 EMERGENCY_TERMS = {
     "legal action", "lawsuit", "police", "danger", "injury", "fraud",
@@ -22,6 +31,45 @@ URGENCY_TERMS = {
     "blocked", "cannot access", "unable to access",
 }
 
+# ── Priority thresholds (exported for tests & callers) ──────────────────────
+
+PRIORITY_THRESHOLDS = {
+    "CRITICAL": 75,
+    "HIGH": 45,
+    "MEDIUM": 20,
+    "LOW": 0,
+}
+
+PRIORITY_DESCRIPTIONS = {
+    "CRITICAL": "Immediate attention required.",
+    "HIGH": "Elevated concern; prioritize human response.",
+    "MEDIUM": "Moderate concern; review and respond.",
+    "LOW": "Low urgency; suitable for standard handling.",
+}
+
+# ── Feature scoring tables (exported for transparency) ──────────────────────
+
+SENTIMENT_SCORES = {
+    # (label, min_score_threshold) → contribution
+    ("NEGATIVE", 0.80): 20,
+    ("NEGATIVE", 0.60): 14,
+    ("NEGATIVE", 0.00): 8,
+    ("POSITIVE", 0.00): -4,
+}
+
+EMOTION_SCORES = {
+    "anger":    {"high": 18, "low": 12, "threshold": 0.70},
+    "fear":     {"high": 18, "low": 12, "threshold": 0.70},
+    "disgust":  {"high": 14, "low": 14, "threshold": 0.00},
+    "sadness":  {"high": 10, "low": 7,  "threshold": 0.70},
+    "surprise": {"high": 5,  "low": 3,  "threshold": 0.70},
+}
+
+SEVERE_ISSUES = {"fraud", "security", "data_loss", "outage"}
+ELEVATED_CATEGORIES = {"refund", "billing", "technical"}
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
 
 def detect_urgency(text: str) -> dict[str, list[str]]:
     """Return the actual urgency and emergency terms present in the text."""
@@ -33,9 +81,67 @@ def detect_urgency(text: str) -> dict[str, list[str]]:
 
 
 def _add(contributions: dict[str, int], reasons: list[str], key: str, value: int, reason: str) -> None:
+    """Record a non-zero feature contribution and its human-readable reason."""
     if value:
         contributions[key] = value
         reasons.append(reason)
+
+
+def _sentiment_contribution(label: str, score: float) -> tuple[int, str]:
+    """Sentiment → score contribution using tiered thresholds."""
+    sentiment = (label or "NEUTRAL").upper()
+    if sentiment == "NEGATIVE":
+        if score >= 0.80:
+            return 20, "Strong negative sentiment"
+        elif score >= 0.60:
+            return 14, "Moderate negative sentiment"
+        else:
+            return 8, "Weak negative sentiment"
+    elif sentiment == "POSITIVE":
+        return -4, "Positive sentiment lowers urgency"
+    return 0, ""
+
+
+def _emotion_contribution(label: str, score: float) -> tuple[int, str]:
+    """Emotion → score contribution with per-emotion thresholds."""
+    emotion = (label or "neutral").lower()
+    cfg = EMOTION_SCORES.get(emotion)
+    if not cfg:
+        return 0, ""
+    value = cfg["high"] if score >= cfg["threshold"] else cfg["low"]
+    return value, f"{emotion.capitalize()} detected"
+
+
+def _keyword_contribution(text: str) -> tuple[int, str, dict[str, list[str]]]:
+    """Emergency/urgency keyword scan."""
+    indicators = detect_urgency(text)
+    if indicators["emergency"]:
+        return 60, f"Emergency indicator(s): {', '.join(indicators['emergency'])}", indicators
+    if indicators["urgency"]:
+        return 18, f"Urgency indicator(s): {', '.join(indicators['urgency'])}", indicators
+    return 0, "", indicators
+
+
+def _issue_category_contribution(category: str, issue: str) -> tuple[int, str]:
+    """Category and issue severity scoring."""
+    if issue in SEVERE_ISSUES:
+        return 15, f"High-impact issue type: {issue}"
+    if category in ELEVATED_CATEGORIES:
+        return 5, f"Complaint category: {category}"
+    return 0, ""
+
+
+def _history_contributions(history: dict[str, int] | None) -> list[tuple[str, int, str]]:
+    """Repeated-complaint and open-history scoring."""
+    history = history or {}
+    results = []
+    previous = max(0, int(history.get("previous_complaints", 0)))
+    unresolved = max(0, int(history.get("unresolved_complaints", 0)))
+    if previous >= 3:
+        results.append(("history", 7, f"Repeated customer contact ({previous} previous complaints)"))
+    if unresolved >= 2:
+        results.append(("open_history", 5, f"Multiple unresolved complaints ({unresolved})"))
+    return results
 
 
 def _sla_contribution(created_at: str | None, status: str | None) -> tuple[int, str | None]:
@@ -56,6 +162,27 @@ def _sla_contribution(created_at: str | None, status: str | None) -> tuple[int, 
     return 0, None
 
 
+def _length_contribution(text: str) -> tuple[int, str]:
+    """Long complaints signal higher effort / more complex issues."""
+    word_count = len((text or "").split())
+    if word_count > 100:
+        return 5, f"Detailed complaint ({word_count} words)"
+    return 0, ""
+
+
+def _classify_priority(score: int, has_emergency: bool) -> tuple[str, str]:
+    """Map a numeric score to a priority band."""
+    if has_emergency or score >= PRIORITY_THRESHOLDS["CRITICAL"]:
+        return "CRITICAL", PRIORITY_DESCRIPTIONS["CRITICAL"]
+    if score >= PRIORITY_THRESHOLDS["HIGH"]:
+        return "HIGH", PRIORITY_DESCRIPTIONS["HIGH"]
+    if score >= PRIORITY_THRESHOLDS["MEDIUM"]:
+        return "MEDIUM", PRIORITY_DESCRIPTIONS["MEDIUM"]
+    return "LOW", PRIORITY_DESCRIPTIONS["LOW"]
+
+
+# ── Main entry point ───────────────────────────────────────────────────────
+
 def calculate_priority(
     *,
     sentiment_label: str,
@@ -69,77 +196,60 @@ def calculate_priority(
     created_at: str | None = None,
     status: str | None = None,
 ) -> dict[str, Any]:
-    """Calculate an inspectable score and severity from available inputs only."""
+    """Calculate an inspectable score and severity from available inputs only.
+
+    Every score is reproducible: it equals sum(feature_contributions.values()).
+    Every priority has reasons: a non-empty list of human-readable strings.
+    """
     contributions: dict[str, int] = {}
     reasons: list[str] = []
-    sentiment = (sentiment_label or "NEUTRAL").upper()
-    emotion = (emotion_label or "neutral").lower()
     category = (category or "other").lower()
     issue = (issue or "general").lower()
 
-    if sentiment == "NEGATIVE":
-        value = 20 if sentiment_score >= 0.80 else 14 if sentiment_score >= 0.60 else 8
-        _add(contributions, reasons, "sentiment", value, "Negative customer sentiment")
-    elif sentiment == "POSITIVE":
-        _add(contributions, reasons, "sentiment", -4, "Positive sentiment lowers urgency")
+    # 1. Sentiment
+    s_val, s_reason = _sentiment_contribution(sentiment_label, sentiment_score)
+    _add(contributions, reasons, "sentiment", s_val, s_reason)
 
-    if emotion in {"anger", "fear"}:
-        value = 18 if emotion_score >= 0.70 else 12
-        _add(contributions, reasons, "emotion", value, f"{emotion.capitalize()} detected")
-    elif emotion == "disgust":
-        _add(contributions, reasons, "emotion", 14, "Disgust detected")
-    elif emotion == "sadness":
-        _add(contributions, reasons, "emotion", 7, "Sadness detected")
+    # 2. Emotion
+    e_val, e_reason = _emotion_contribution(emotion_label, emotion_score)
+    _add(contributions, reasons, "emotion", e_val, e_reason)
 
-    indicators = detect_urgency(text)
+    # 3. Emergency / urgency keywords
+    k_val, k_reason, indicators = _keyword_contribution(text)
     if indicators["emergency"]:
-        _add(
-            contributions, reasons, "emergency", 60,
-            f"Emergency indicator(s): {', '.join(indicators['emergency'])}",
-        )
+        _add(contributions, reasons, "emergency", k_val, k_reason)
     elif indicators["urgency"]:
-        _add(
-            contributions, reasons, "urgency", 18,
-            f"Urgency indicator(s): {', '.join(indicators['urgency'])}",
-        )
+        _add(contributions, reasons, "urgency", k_val, k_reason)
 
-    severe_issues = {"fraud", "security", "data_loss", "outage"}
-    elevated_categories = {"refund", "billing", "technical"}
-    if issue in severe_issues:
-        _add(contributions, reasons, "issue_severity", 15, f"High-impact issue type: {issue}")
-    elif category in elevated_categories:
-        _add(contributions, reasons, "category", 5, f"Complaint category: {category}")
+    # 4. Issue severity / category
+    ic_val, ic_reason = _issue_category_contribution(category, issue)
+    _add(contributions, reasons, "issue_severity" if issue in SEVERE_ISSUES else "category", ic_val, ic_reason)
 
-    history = history or {}
-    previous = max(0, int(history.get("previous_complaints", 0)))
-    unresolved = max(0, int(history.get("unresolved_complaints", 0)))
-    if previous >= 3:
-        _add(contributions, reasons, "history", 7, f"Repeated customer contact ({previous} previous complaints)")
-    if unresolved >= 2:
-        _add(contributions, reasons, "open_history", 5, f"Multiple unresolved complaints ({unresolved})")
+    # 5. Complaint history
+    for key, val, reason in _history_contributions(history):
+        _add(contributions, reasons, key, val, reason)
 
+    # 6. SLA elapsed time
     sla_value, sla_reason = _sla_contribution(created_at, status)
     if sla_reason:
         _add(contributions, reasons, "sla", sla_value, sla_reason)
 
+    # 7. Complaint length
+    l_val, l_reason = _length_contribution(text)
+    _add(contributions, reasons, "length", l_val, l_reason)
+
+    # ── Score capping ───────────────────────────────────────────────────────
     raw_score = sum(contributions.values())
     if raw_score > 100:
         _add(contributions, reasons, "score_cap", 100 - raw_score, "Score capped at 100")
     elif raw_score < 0:
         _add(contributions, reasons, "score_floor", -raw_score, "Score floored at 0")
-    score = sum(contributions.values())
-    if indicators["emergency"] or score >= 75:
-        priority = "CRITICAL"
-        description = "Immediate attention required."
-    elif score >= 45:
-        priority = "HIGH"
-        description = "Elevated concern; prioritize human response."
-    elif score >= 20:
-        priority = "MEDIUM"
-        description = "Moderate concern; review and respond."
-    else:
-        priority = "LOW"
-        description = "Low urgency; suitable for standard handling."
+
+    score = max(0, min(100, sum(contributions.values())))
+
+    # ── Classification ──────────────────────────────────────────────────────
+    has_emergency = bool(indicators["emergency"])
+    priority, description = _classify_priority(score, has_emergency)
 
     return {
         "priority": priority,
@@ -149,4 +259,5 @@ def calculate_priority(
         "feature_contributions": contributions,
         "urgency_indicators": indicators["urgency"],
         "emergency_indicators": indicators["emergency"],
+        "thresholds": PRIORITY_THRESHOLDS,
     }
