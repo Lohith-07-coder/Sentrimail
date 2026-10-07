@@ -92,6 +92,9 @@ def load_cfpb_complaints(data_dir: Path) -> List[UnifiedSample]:
 
     try:
         df = pd.read_csv(cfpb_file)
+        if "Consumer complaint narrative" not in df.columns:
+            logger.warning("CFPB dataset missing 'Consumer complaint narrative' column")
+            return samples
         for idx, row in df.iterrows():
             narrative = str(row.get("Consumer complaint narrative", "")).strip()
             if not narrative or narrative == "nan":
@@ -122,6 +125,9 @@ def load_bitext_support_dataset(data_dir: Path) -> List[UnifiedSample]:
 
     try:
         df = pd.read_csv(bitext_file)
+        if "instruction" not in df.columns and "utterance" not in df.columns:
+            logger.warning("Bitext dataset missing required text columns")
+            return samples
         for idx, row in df.iterrows():
             uttr = str(row.get("instruction", row.get("utterance", ""))).strip()
             resp = str(row.get("response", "")).strip()
@@ -151,6 +157,9 @@ def load_banking77_dataset(data_dir: Path) -> List[UnifiedSample]:
 
     try:
         df = pd.read_csv(b77_file)
+        if "text" not in df.columns:
+            logger.warning("Banking77 dataset missing required 'text' column")
+            return samples
         for idx, row in df.iterrows():
             text = str(row.get("text", "")).strip()
             if not text:
@@ -178,6 +187,9 @@ def load_goemotions_dataset(data_dir: Path) -> List[UnifiedSample]:
 
     try:
         df = pd.read_csv(file_path)
+        if "text" not in df.columns:
+            logger.warning("GoEmotions dataset missing required 'text' column")
+            return samples
         emotion_map = {
             "anger": "anger", "fear": "fear", "sadness": "sadness",
             "disgust": "disgust", "surprise": "surprise", "joy": "joy"
@@ -209,6 +221,9 @@ def load_sms_jigsaw_dataset(data_dir: Path) -> List[UnifiedSample]:
 
     try:
         df = pd.read_csv(spam_file)
+        if "text" not in df.columns:
+            logger.warning("Spam/Abuse dataset missing required 'text' column")
+            return samples
         for idx, row in df.iterrows():
             text = str(row.get("text", "")).strip()
             is_spam = int(row.get("label", 0)) == 1
@@ -230,16 +245,20 @@ def load_sms_jigsaw_dataset(data_dir: Path) -> List[UnifiedSample]:
 def load_massive_dataset(data_dir: Path) -> List[UnifiedSample]:
     """Load Amazon Massive Multilingual Dataset if present."""
     samples: List[UnifiedSample] = []
-    file_path = data_dir / "massive_multilingual.json"
+    file_path = data_dir / "massive_multilingual.csv"
     if not file_path.exists():
         return samples
 
     try:
-        data = json.loads(file_path.read_text(encoding="utf-8"))
-        for idx, item in enumerate(data):
-            text = item.get("utt", "").strip()
-            lang = item.get("locale", "en")[:2]
-            if not text:
+        df = pd.read_csv(file_path)
+        if "utt" not in df.columns:
+            logger.warning("MASSIVE dataset missing required column 'utt'")
+            return samples
+            
+        for idx, row in df.iterrows():
+            text = str(row.get("utt", "")).strip()
+            lang = str(row.get("locale", "en"))[:2]
+            if not text or text == "nan":
                 continue
             samples.append(UnifiedSample(
                 id=f"massive_{idx}",

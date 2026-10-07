@@ -13,3 +13,19 @@ __pycache__/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Large datasets
+data/raw/*.csv
+
+
+# Temporary test files
+pytest-temp/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Environment
+.env
+.venv/
+venv/
