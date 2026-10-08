@@ -368,105 +368,67 @@ def _is_auto_resolvable(priority: str, text: str, sentiment: Dict[str, Any]) -> 
     return True
 
 
-def _generate_auto_user_response(
-    username: str,
-    text: str = "",
-    category: str = "other",
-    sentiment_score: float = 0.5,
-    original_language: str = "en"
-) -> str:
+def _generate_local_llm_response(text: str, category: str, language: str, username: str) -> str:
+    if not _generative_pipeline:
+        return ""
     prompt = (
         "System message:\n"
         "You are a professional customer support AI. You represent an organization that takes every complaint seriously. "
         "Always respond with empathy and give a specific, actionable solution. Never give vague or generic replies.\n\n"
         "User message:\n"
-        f"A user submitted the following complaint. Complaint category: {category}. Sentiment score: {sentiment_score}. "
-        f"Priority: low. Original language: {original_language}. Complaint text (in English): {text}. "
-        f"Write a helpful, specific reply in {original_language} language. Keep it to 3 to 4 sentences."
+        f"Category: {category}. Language: {language}. Complaint text: {text}. "
+        f"Write a helpful, specific reply to the user. Keep it to 3 to 4 sentences."
     )
+    try:
+        res = _generative_pipeline(prompt, max_length=150, do_sample=True, top_p=0.95)[0]['generated_text']
+        res = res.strip()
+        if "{username}" in res:
+            res = res.format(username=username)
+        return res
+    except:
+        return ""
+
+def _get_category_fallback(category: str, issue: str, text: str, username: str) -> str:
+    cat_lower = category.lower()
+    iss_lower = issue.lower()
+    txt_lower = text.lower()
     
-    if _generative_pipeline:
-        try:
-            res = _generative_pipeline(prompt, max_length=150, do_sample=True, top_p=0.95)[0]['generated_text']
-            return res.strip()
-        except:
-            pass
-
-    return (
-        f"Dear {username},\n\n"
-        "Thanks for reporting this. We have automatically logged your issue and started basic remediation checks. "
-        "If the issue continues, please reply with additional details and our support team will take over.\n\n"
-        "Best regards,\nSentriMail Support"
-    )
-
-
-def _generate_admin_suggestion(
-    priority: str,
-    username: str,
-    text: str = "",
-    category: str = "other",
-) -> str:
-    issue = _infer_issue_type(text, category)
-
-    if priority == "CRITICAL":
-        if issue == "technical":
-            return (
-                f"Dear {username},\n\n"
-                "We sincerely apologize. We have escalated this to our critical incident team due to potential service instability. "
-                "Immediate containment and root-cause investigation are in progress, and we will share a concrete update shortly.\n\n"
-                "Regards,\nSentriMail Resolution Team"
-            )
+    if "card" in cat_lower or "card" in txt_lower:
         return (
             f"Dear {username},\n\n"
-            "We sincerely apologize. Your complaint has been escalated to our critical-response queue and is being "
-            "handled immediately. A senior specialist will contact you shortly with a concrete resolution plan.\n\n"
-            "Regards,\nSentriMail Resolution Team"
-        )
-    if priority == "HIGH":
-        if issue == "billing":
-            return (
-                f"Dear {username},\n\n"
-                "Thank you for reporting this billing concern. We have prioritized your case and started verification of transactions and invoice history. "
-                "You will receive a detailed update after our finance review.\n\n"
-                "Regards,\nSentriMail Billing Support"
-            )
-        if issue == "auth":
-            return (
-                f"Dear {username},\n\n"
-                "Thank you for reporting the login issue. We have prioritized your case and assigned it to an authentication specialist. "
-                "We will verify account status and share the next recovery steps shortly.\n\n"
-                "Regards,\nSentriMail Support"
-            )
-        return (
-            f"Dear {username},\n\n"
-            "Thank you for reporting this issue. We have prioritized your complaint and assigned it to a specialist. "
-            "You will receive an update soon after investigation.\n\n"
+            "You can locate your card through your account/card-management section, or track its delivery status "
+            "via the provided tracking link. Let us know if it hasn't arrived within the expected timeframe.\n\n"
             "Regards,\nSentriMail Support"
         )
-    if issue == "technical":
+    if "charge" in txt_lower or "bill" in txt_lower or "refund" in txt_lower or cat_lower in {"billing", "refund"} or iss_lower == "billing":
         return (
             f"Dear {username},\n\n"
-            "Thanks for reporting this technical issue. Our team has started diagnostics and will share troubleshooting guidance "
-            "or a fix timeline in the next update.\n\n"
+            "We're sorry about the billing concern you raised. Please provide the transaction details "
+            "so we can verify the charge and assist with any necessary refund or adjustment process.\n\n"
             "Regards,\nSentriMail Support"
         )
-    if issue == "auth":
+    if "hack" in txt_lower or "unauthorized" in txt_lower or "secure" in txt_lower or iss_lower == "auth" or "account" in txt_lower:
         return (
             f"Dear {username},\n\n"
-            "Thanks for reporting the login/access problem. We are reviewing account authentication logs and will share the next steps shortly.\n\n"
+            "We're sorry to hear about the account access or security issue. Please secure your account immediately "
+            "and contact support so we can help protect the account and investigate the incident.\n\n"
             "Regards,\nSentriMail Support"
         )
-    if issue == "billing":
+    if cat_lower == "delivery" or iss_lower == "delivery" or "status" in txt_lower:
         return (
             f"Dear {username},\n\n"
-            "Thanks for sharing your billing concern. We are validating the charge details and will provide a clear breakdown and resolution soon.\n\n"
-            "Regards,\nSentriMail Billing Support"
+            "We apologize for the issue with your delivery. Please ensure your shipping address is correct, "
+            "and we will check the tracking status with our courier partners to resolve this quickly.\n\n"
+            "Regards,\nSentriMail Support"
         )
-    return (
-        f"Dear {username},\n\n"
-        "Thanks for sharing the details. We are reviewing your complaint and will provide a full response shortly.\n\n"
-        "Regards,\nSentriMail Support"
-    )
+    if cat_lower == "technical" or iss_lower == "technical":
+        return (
+            f"Dear {username},\n\n"
+            "We apologize for the technical difficulties you're experiencing. Our engineering team has been notified "
+            "and we are investigating the system logs to identify and resolve the root cause.\n\n"
+            "Regards,\nSentriMail Support"
+        )
+    return ""
 
 
 def analyze_complaint(
@@ -528,27 +490,49 @@ def analyze_complaint(
     )
     
     dataset_suggestion = grounded_res["response"]
-    if dataset_suggestion and priority_data["priority"] in {"HIGH", "CRITICAL"} and _is_generic_dataset_response(dataset_suggestion):
+    response_source = grounded_res.get("source", "none")
+    response_confidence = grounded_res.get("confidence", 0.0)
+
+    if dataset_suggestion and _is_generic_dataset_response(dataset_suggestion):
         dataset_suggestion = ""
-        
-    admin_suggestion = dataset_suggestion or _generate_admin_suggestion(
-        priority=priority_data["priority"],
-        username=username,
-        text=analysis_text,
-        category=inferred_category,
-    )
-    
-    # Require human review if confidence is low
-    if grounded_res.get("human_review_required"):
+        response_source = "none"
+        response_confidence = 0.0
+
+    final_response = dataset_suggestion
+
+    if not final_response:
+        # Step 3: try local LLM generation
+        generated = _generate_local_llm_response(analysis_text, inferred_category, language, username)
+        if generated:
+            final_response = generated
+            response_source = "local_llm"
+            response_confidence = 0.6
+        else:
+            # Step 4: use category/intent-specific fallback
+            final_response = _get_category_fallback(inferred_category, issue, analysis_text, username)
+            if final_response:
+                response_source = "category_template"
+                response_confidence = 0.8
+            else:
+                # Step 5: generic acknowledgement fallback
+                final_response = (
+                    f"Dear {username},\n\n"
+                    "Thanks for sharing the details. We are reviewing your complaint and will provide a full response shortly.\n\n"
+                    "Regards,\nSentriMail Support"
+                )
+                response_source = "generic_fallback"
+                response_confidence = 1.0
+
+    human_review_required = grounded_res.get("human_review_required", True)
+    if response_source in ["local_llm", "category_template", "generic_fallback", "none"]:
+        human_review_required = True
+
+    auto_resolvable = _is_auto_resolvable(priority_data["priority"], analysis_text, sentiment)
+    if human_review_required:
         auto_resolvable = False
-        
-    auto_response = (dataset_suggestion or _generate_auto_user_response(
-        username=username, 
-        text=analysis_text, 
-        category=inferred_category,
-        sentiment_score=sentiment["score"], 
-        original_language=language
-    )) if auto_resolvable else ""
+
+    admin_suggestion = final_response
+    auto_response = final_response if auto_resolvable else ""
 
     return {
         "language": language,
@@ -570,9 +554,9 @@ def analyze_complaint(
         "auto_resolution_reason": "Low priority and safe to auto-handle." if auto_resolvable else ("Low retrieval confidence requires review." if grounded_res.get("human_review_required") else "Requires admin review."),
         "user_auto_response": auto_response,
         "admin_suggested_response": admin_suggestion,
-        "ai_suggested_response": admin_suggestion if not auto_resolvable else auto_response,
+        "ai_suggested_response": admin_suggestion,
         "model_used": "transformer" if _use_transformers else "rule-based",
-        "response_source": grounded_res.get("source", "template") if dataset_suggestion else "template",
-        "response_confidence": grounded_res.get("confidence", 0.0),
+        "response_source": response_source,
+        "response_confidence": response_confidence,
         "reference_id": complaint_id,
     }
