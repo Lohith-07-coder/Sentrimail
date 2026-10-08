@@ -68,15 +68,15 @@ SentriMail was engineered to automate complaint ingestion, AI-driven intent/emot
 
 ## 2. Features
 
-- **🧠 Multi-Task AI NLP Pipeline**: Analyzes complaints using Transformer models for sentiment (`DistilBERT`) and emotion detection (`DistilRoBERTa`).
-- **📊 Mathematical Priority Engine**: Calculates dynamic priority scores ($0 - 100$) and assigns SLA severity levels (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`).
-- **⚡ Automated Resolution Workflow**: Auto-resolves safe, low-urgency complaints with AI-generated or dataset-matched responses without human intervention.
-- **🎙️ Audio Transcription**: Converts voice recording uploads directly into structured complaints using OpenAI Whisper (`base`).
-- **🌍 Bi-Directional Multilingual Translation**: Automatically detects incoming language, translates text into English for internal AI processing, and translates generated resolutions back to the user's native language.
-- **🚨 Automated Time-Decay Escalation**: Background scheduler (`APScheduler`) continuously monitors pending tickets and automatically escalates `MEDIUM` $\rightarrow$ `HIGH` $\rightarrow$ `CRITICAL` based on SLA thresholds.
-- **🛡️ Enterprise RBAC & Security**: Secure cookie-based JWT authentication, password hashing (`SHA-256`), and role isolation between Customers (`user`) and Support Admins (`admin`).
-- **💾 Zero-Downtime Database Fallback**: Automatically connects to MongoDB or safely switches to local JSON persistence if MongoDB is unavailable.
-- **📈 Real-Time Analytics Dashboard**: Displays category breakdown, priority distribution, daily complaint trends, average response time, and CSV data exports.
+- **[IMPLEMENTED] 🧠 Multi-Task AI NLP Pipeline**: Analyzes complaints using Transformer models for sentiment (`DistilBERT`) and emotion detection (`DistilRoBERTa`).
+- **[IMPLEMENTED] 📊 Mathematical Priority Engine**: Calculates dynamic priority scores ($0 - 100$) and assigns SLA severity levels (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`).
+- **[IMPLEMENTED] ⚡ Automated Resolution Workflow**: Auto-resolves safe, low-urgency complaints with AI-generated or dataset-matched responses without human intervention.
+- **[EXPERIMENTAL] 🎙️ Audio Transcription**: Converts voice recording uploads directly into structured complaints using OpenAI Whisper (`base`).
+- **[PARTIAL] 🌍 Bi-Directional Multilingual Translation**: Automatically detects incoming language, translates text into English for internal AI processing, and translates generated resolutions back to the user's native language.
+- **[IMPLEMENTED] 🚨 Automated Time-Decay Escalation**: Background scheduler (`APScheduler`) continuously monitors pending tickets and automatically escalates `MEDIUM` $\rightarrow$ `HIGH` $\rightarrow$ `CRITICAL` based on SLA thresholds.
+- **[IMPLEMENTED] 🛡️ Enterprise RBAC & Security**: Secure cookie-based JWT authentication, password hashing (`SHA-256`), and role isolation between Customers (`user`) and Support Admins (`admin`).
+- **[IMPLEMENTED] 💾 Zero-Downtime Database Fallback**: Automatically connects to MongoDB or safely switches to local JSON persistence if MongoDB is unavailable.
+- **[IMPLEMENTED] 📈 Real-Time Analytics Dashboard**: Displays category breakdown, priority distribution, daily complaint trends, average response time, and CSV data exports.
 
 ---
 
@@ -648,10 +648,10 @@ python -m pytest tests/test_app.py
 
 ## 17. Future Improvements
 
-- [ ] **Vector DB Integration**: Migrate dataset response matching from local TF-IDF vectors to Qdrant or Pinecone for scale.
-- [ ] **LLM Agent Tool Calling**: Integrate LangChain/LangGraph agents capable of issuing refund transactions via API.
-- [ ] **WebSocket Real-time Push**: Push incoming `CRITICAL` priority alerts directly to admin dashboards via WebSockets.
-- [ ] **OAuth2 Integration**: Support Google and Microsoft Single Sign-On (SSO).
+- **[PLANNED]** **Vector DB Integration**: Migrate dataset response matching from local TF-IDF vectors to Qdrant or Pinecone for scale.
+- **[PLANNED]** **LLM Agent Tool Calling**: Integrate LangChain/LangGraph agents capable of issuing refund transactions via API.
+- **[PLANNED]** **WebSocket Real-time Push**: Push incoming `CRITICAL` priority alerts directly to admin dashboards via WebSockets.
+- **[PLANNED]** **OAuth2 Integration**: Support Google and Microsoft Single Sign-On (SSO).
 
 ---
 

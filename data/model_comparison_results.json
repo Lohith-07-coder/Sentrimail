@@ -1,11 +1,11 @@
 {
-  "benchmark_timestamp": "2026-10-07 10:12:09",
+  "benchmark_timestamp": "2026-10-08 08:55:35",
   "models_evaluated": [
     {
       "model": "DistilBERT (66M) + TF-IDF Baseline",
       "average_latency_ms": 0.0,
       "sentiment_accuracy": 0.8,
-      "total_eval_time_sec": 7.75,
+      "total_eval_time_sec": 8.17,
       "memory_footprint": "~260 MB",
       "offline_ready": true
     },
@@ -13,7 +13,7 @@
       "model": "Zero-Shot google/flan-t5-large (783M)",
       "average_latency_ms": 0.0,
       "sentiment_accuracy": 1.0,
-      "total_eval_time_sec": 8.7,
+      "total_eval_time_sec": 2.06,
       "memory_footprint": "~3.1 GB",
       "offline_ready": true
     }
