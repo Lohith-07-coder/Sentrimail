@@ -2,764 +2,296 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111.0-009688.svg)](https://fastapi.tiangolo.com/)
-[![HuggingFace](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Transformers-yellow.svg)](https://huggingface.co/)
+[![Transformers](https://img.shields.io/badge/🤗%20Hugging%20Face-Transformers-yellow.svg)](https://huggingface.co/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-4.8.0-47A248.svg)](https://www.mongodb.com/)
 [![Build & Test](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/test_app.py)
 
-SentriMail is an enterprise-grade, role-based complaint management and triage platform powered by a hybrid artificial intelligence engine. It combines real-time NLP analysis (sentiment detection, emotion recognition, root-cause categorization), automated multi-language translation, speech-to-text audio transcription, mathematical priority scoring, and auto-resolution workflows.
+**SentriMail** is an open‑source, role‑based complaint management platform that combines rule‑based logic with lightweight Transformer models for sentiment, emotion, and response generation. It can run with a real MongoDB instance or fall back to a local JSON store, making it easy to prototype and deploy.
 
 ---
 
 ## 📋 Table of Contents
 1. [Project Overview](#1-project-overview)
-2. [Features](#2-features)
-3. [Complete System Architecture](#3-complete-system-architecture)
-4. [AI Pipeline](#4-ai-pipeline)
-5. [Tech Stack](#5-tech-stack)
-6. [Folder Structure](#6-folder-structure)
-7. [Database Design](#7-database-design)
+2. [Key Features](#2-key-features)
+3. [System Architecture](#3-system-architecture)
+4. [Transformer & AI Pipeline](#4-transformer--ai-pipeline)
+5. [Priority Scoring Engine](#5-priority-scoring-engine)
+6. [Response Generation & Root‑Cause Logic](#6-response-generation--root‑cause-logic)
+7. [Database & Persistence](#7-database--persistence)
 8. [API Documentation](#8-api-documentation)
-9. [Machine Learning Models](#9-machine-learning-models)
-10. [Priority Engine](#10-priority-engine)
-11. [Vector Search & Response Retrieval Architecture](#11-vector-search--response-retrieval-architecture)
-12. [Deployment Architecture](#12-deployment-architecture)
-13. [Installation](#13-installation)
-14. [Environment Variables](#14-environment-variables)
-15. [Running the Project](#15-running-the-project)
-16. [Screenshots & UI Showcase](#16-screenshots--ui-showcase)
-17. [Future Improvements](#17-future-improvements)
-18. [Performance Metrics](#18-performance-metrics)
-19. [Security & Compliance](#19-security--compliance)
-20. [Engineering Challenges](#20-engineering-challenges)
-21. [Lessons Learned](#21-lessons-learned)
-22. [Contributing](#22-contributing)
-23. [Acknowledgements](#24-acknowledgements)
-24. [Contact & Support](#25-contact--support)
+9. [Technical Stack](#9-technical-stack)
+10. [Project Structure](#10-project-structure)
+11. [Installation & Execution](#11-installation--execution)
+12. [Application Screenshots & Results](#12-application-screenshots--results)
+13. [Limitations & Future Work](#13-limitations--future-work)
+14. [Testing & Evaluation](#14-testing--evaluation)
+15. [Conclusion](#15-conclusion)
 
 ---
 
 ## 1. Project Overview
+SentriMail enables customers to submit complaints via a web UI (or API). Each complaint is:
+- **Translated** to English when needed (using `langdetect` and optional `deep_translator`).
+- **Analyzed** for sentiment, emotion, category, and issue type using either pretrained Transformer pipelines or deterministic rule‑based fallbacks.
+- **Scored** with a deterministic priority engine (see Section 5) that produces a human‑readable priority band (CRITICAL, HIGH, MEDIUM, LOW).
+- **Suggested a response** via a five‑step cascade:
+  1. Retrieval from a TF‑IDF‑based response dataset.
+  2. Generation with a small local LLM (`google/flan‑t5‑small`).
+  3. Category‑specific template.
+  4. Generic fallback.
+  5. Auto‑resolution for low‑priority cases.
+- **Presented** to admins via a dashboard where they can review, edit, and resolve complaints.
 
-### What Problem Does This Project Solve?
-Modern enterprises handle thousands of customer support requests, feedback submissions, and critical escalations daily across multiple channels and languages. Standard ticketing systems suffer from:
-- **Delayed Triage**: Critical emergencies (e.g., legal threats, server outages, security breaches) get buried under routine requests.
-- **Manual Overhead**: Support representatives spend hours drafting boilerplate responses for low-urgency queries.
-- **Language Barriers**: International complaints require manual translation before routing, introducing latency.
-- **Subjective Prioritization**: Human agents manually assign priority based on intuition rather than empirical sentiment and emotional intensity scoring.
-
-### Why Was This Project Built?
-SentriMail was engineered to automate complaint ingestion, AI-driven intent/emotion analysis, SLA-based priority escalation, and auto-response generation while providing human agents with an intuitive, real-time dashboard for high-urgency cases.
-
-### Real-World Use Case
-- **E-Commerce & SaaS**: Automatically resolve simple tracking or refund status inquiries, while immediately escalating payment fraud or legal threats to senior support managers.
-- **Multinational Customer Service**: Accept complaints in 100+ languages, translate them into English for AI analysis and admin triage, and automatically respond back to the user in their native language.
-
-### Solution Comparison
-
-| Feature | Legacy Helpdesks (e.g., Zendesk basic) | Custom AI Wrappers | SentriMail |
-| :--- | :--- | :--- | :--- |
-| **Priority Assignment** | Static rules & manual tagging | Single LLM prompt call | Mathematical multi-factor scoring (Emotion + Sentiment + Urgency keywords + SLA decay) |
-| **Fallback Storage** | Requires active database connection | None (Crashes on DB disconnect) | Automatic zero-downtime JSON storage fallback |
-| **Multilingual Support** | Manual plugin setup | Single language | Native bi-directional translation pipeline (`deep-translator`) |
-| **Speech Support** | Third-party paid addon | None | Native OpenAI Whisper speech-to-text integration |
-| **Dataset Response Similarity** | Keyword matching | Expensive LLM tokens | Embedded TF-IDF vector similarity with dynamic parameter substitution |
+The system is designed for **high reliability**: if MongoDB is unavailable, the `_DBProxy` transparently falls back to a JSON file located under `data/`.
 
 ---
 
-## 2. Features
-
-- **[IMPLEMENTED] 🧠 Multi-Task AI NLP Pipeline**: Analyzes complaints using Transformer models for sentiment (`DistilBERT`) and emotion detection (`DistilRoBERTa`).
-- **[IMPLEMENTED] 📊 Mathematical Priority Engine**: Calculates dynamic priority scores ($0 - 100$) and assigns SLA severity levels (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`).
-- **[IMPLEMENTED] ⚡ Automated Resolution Workflow**: Auto-resolves safe, low-urgency complaints with AI-generated or dataset-matched responses without human intervention.
-- **[EXPERIMENTAL] 🎙️ Audio Transcription**: Converts voice recording uploads directly into structured complaints using OpenAI Whisper (`base`).
-- **[PARTIAL] 🌍 Bi-Directional Multilingual Translation**: Automatically detects incoming language, translates text into English for internal AI processing, and translates generated resolutions back to the user's native language.
-- **[IMPLEMENTED] 🚨 Automated Time-Decay Escalation**: Background scheduler (`APScheduler`) continuously monitors pending tickets and automatically escalates `MEDIUM` $\rightarrow$ `HIGH` $\rightarrow$ `CRITICAL` based on SLA thresholds.
-- **[IMPLEMENTED] 🛡️ Enterprise RBAC & Security**: Secure cookie-based JWT authentication, password hashing (`SHA-256`), and role isolation between Customers (`user`) and Support Admins (`admin`).
-- **[IMPLEMENTED] 💾 Zero-Downtime Database Fallback**: Automatically connects to MongoDB or safely switches to local JSON persistence if MongoDB is unavailable.
-- **[IMPLEMENTED] 📈 Real-Time Analytics Dashboard**: Displays category breakdown, priority distribution, daily complaint trends, average response time, and CSV data exports.
+## 2. Key Features
+| Feature | Implementation | Technology | Status |
+|---|---|---|---|
+| Complaint submission (web & API) | `app/routers/api.py`, `templates/` | FastAPI, Jinja2 | Implemented |
+| Sentiment analysis | `app/services/ai_service.py` – huggingface `distilbert‑sst‑2` or rule‑based fallback | 🤗 Transformers | Implemented |
+| Emotion detection | `app/services/ai_service.py` – `j‑hartmann/emotion‑english‑distilroberta‑base` or rule‑based fallback | 🤗 Transformers | Implemented |
+| Multi‑language support | `langdetect` + optional `deep_translator` | LangDetect, Deep Translator | Partial (English fallback) |
+| Audio transcription | `app/services/transcription_service.py` (uses `whisper`) | OpenAI Whisper | Experimental |
+| Priority scoring | Deterministic rule‑based engine (`app/core/priority.py`) | Pure Python | Implemented |
+| Response retrieval (TF‑IDF) | `app/services/response_intelligence.py` (dataset JSON) | Custom TF‑IDF | Implemented |
+| Local LLM generation | `google/flan‑t5‑small` via HuggingFace pipeline | 🤗 Transformers | Implemented |
+| Admin dashboard & analytics | Jinja2 templates, router `admin.py` | FastAPI, Jinja2 | Implemented |
+| Background escalation job | APScheduler runs `escalate_complaints` hourly | APScheduler | Implemented |
+| JSON fallback storage | `_DBProxy` in `app/core/database.py` | Python I/O | Implemented |
+| Unit tests | `tests/` (FastAPI TestClient) | pytest | Implemented |
 
 ---
 
-## 3. Complete System Architecture
-
-SentriMail is architected following a decoupled Layered Service-Repository Pattern. High-level requests flow through FastAPI APIRouters to specialized domain services, persistence repositories, and AI pipelines.
-
+## 3. System Architecture
 ```mermaid
 flowchart TD
-    subgraph ClientLayer ["Client Layer (Browser / API Client)"]
-        User["👤 Customer / Admin"]
-        UI["🌐 Web UI / HTML Templates"]
-        AudioIn["🎙️ Audio File Upload"]
-    end
-
-    subgraph ControllerLayer ["FastAPI Controller Layer (app/routers)"]
-        AuthRouter["🔐 Auth Router (/login, /register, /logout)"]
-        UserRouter["👤 User Router (/user/submit, /track)"]
-        AdminRouter["🛠️ Admin Router (/admin/dashboard, /export)"]
-        APIRouter["⚡ REST API Router (/api/analyze, /api/transcribe)"]
-    end
-
-    subgraph ServiceLayer ["Business & Domain Services (app/services)"]
-        AuthService["🔒 AuthService (JWT & Passlib)"]
-        AIService["🧠 AIService (NLP Transformers & Heuristics)"]
-        ComplaintService["📋 ComplaintService (Lifecycle & Analytics)"]
-        EmailService["📧 EmailService (SMTP Resolution Emails)"]
-        TranscribeService["🎙️ TranscriptionService (OpenAI Whisper)"]
-    end
-
-    subgraph DataLayer ["Persistence Boundary (app/repositories & core)"]
-        UserRepo["📁 UserRepository"]
-        ComplaintRepo["📁 ComplaintRepository"]
-        DBProxy["🔌 DB Proxy / Adapter (app/core/database.py)"]
-        Mongo["🍃 MongoDB Collection"]
-        JSONFallback["📄 Local JSON Fallback (data/*.json)"]
-    end
-
-    User --> UI
-    AudioIn --> APIRouter
-    UI --> AuthRouter
-    UI --> UserRouter
-    UI --> AdminRouter
-
-    AuthRouter --> AuthService
-    UserRouter --> ComplaintService
-    AdminRouter --> ComplaintService
-    APIRouter --> AIService
-    APIRouter --> TranscribeService
-
-    ComplaintService --> AIService
-    ComplaintService --> EmailService
-    AuthService --> UserRepo
-    ComplaintService --> ComplaintRepo
-
-    UserRepo --> DBProxy
-    ComplaintRepo --> DBProxy
-
-    DBProxy -- Primary Connection --> Mongo
-    DBProxy -- Network Fallback --> JSONFallback
+    A[User / Admin (Browser)] -->|HTTP| B[FastAPI Application]
+    B --> C[Auth Router]
+    B --> D[User Router]
+    B --> E[Admin Router]
+    B --> F[API Router]
+    D & F --> G[AI Service]
+    G --> H[Sentiment Pipeline (DistilBERT) / Rule‑based]
+    G --> I[Emotion Pipeline (DistilRoBERTa) / Rule‑based]
+    G --> J[Generative Pipeline (FLAN‑T5) – optional]
+    G --> K[Response Retrieval (TF‑IDF dataset)]
+    G --> L[Priority Engine (app/core/priority.py)]
+    L --> M[Priority Band (CRITICAL/HIGH/MEDIUM/LOW)]
+    H & I & K & J --> N[Complaint Analysis Result]
+    N --> O[Repository Layer]
+    O --> P[MongoDB]
+    O --> Q[JSON fallback (data/complaints.json)]
+    B --> R[APScheduler (background escalation)]
+    R --> S[Escalate Complaints Job]
+    style B fill:#0e639c,stroke:#333,stroke-width:2px,color:#fff
+    style G fill:#ffb900,stroke:#333,stroke-width:2px,color:#000
+    style O fill:#d83b01,stroke:#333,stroke-width:2px,color:#fff
+    style P fill:#107c10,stroke:#333,stroke-width:2px,color:#fff
+    style Q fill:#b4009e,stroke:#333,stroke-width:2px,color:#fff
 ```
 
-### Component Breakdown
-1. **Client Layer**: User-facing Jinja2 HTML5 responsive views styled with custom CSS glassmorphism, dynamic forms, and audio capture.
-2. **Controller Layer (`app/routers/`)**: FastAPI modular sub-applications handling request validation, form dependencies, and session verification.
-3. **Service Layer (`app/services/`)**: Encapsulates domain logic including NLP model inference, score calculation, translation, email dispatching, and analytics aggregation.
-4. **Persistence Layer (`app/repositories/` & `app/core/database.py`)**: Abstracted database interfaces supported by PyMongo with automatic failover to filesystem JSON storage.
+**Explanation**
+- **Presentation layer** – FastAPI routers handle HTTP requests and render Jinja2 templates.
+- **Domain layer** – Services (`auth_service`, `complaint_service`, `ai_service`) contain business logic.
+- **Data layer** – Repositories abstract persistence; they talk to MongoDB or the JSON fallback.
+- **Infrastructure** – APScheduler provides the hourly escalation job.
+- **AI pipeline** – Transformers are loaded lazily; when unavailable the system falls back to deterministic rule‑based heuristics.
 
 ---
 
-## 4. AI Pipeline
+## 4. Transformer & AI Pipeline
+### Loaded Models
+| Model | Purpose | HuggingFace Identifier | Loaded By |
+|---|---|---|---|
+| Sentiment analysis | Binary sentiment (POS/NEG) | `distilbert-base-uncased-finetuned-sst-2-english` | `ai_service._load_models()` |
+| Emotion detection | 7‑class emotion classification | `j-hartmann/emotion-english-distilroberta-base` | `ai_service._load_models()` |
+| Text‑to‑text generation (fallback) | Short response generation | `google/flan-t5-small` | `ai_service._load_models()` |
 
-Every submitted complaint passes through a sequential multi-stage NLP pipeline before storage or resolution:
+If any of the above pipelines raise an exception, the service automatically switches to rule‑based implementations (`_rule_based_sentiment`, `_rule_based_emotion`).
 
+### Processing Flow (simplified)
 ```mermaid
-flowchart LR
-    RawInput["📝 Raw Text Input"] --> LangDetect["🌍 Language Detection (langdetect)"]
-    LangDetect --> Translation["🔄 DeepTranslator (En Translation)"]
-    Translation --> KeywordFilter["🚨 Emergency Keyword Scanner"]
-    KeywordFilter --> SentimentModel["😊 Sentiment Analysis (DistilBERT)"]
-    KeywordFilter --> EmotionModel["🎭 Emotion Classification (DistilRoBERTa)"]
-    
-    SentimentModel --> PriorityEngine["🧮 Priority Scoring Engine"]
-    EmotionModel --> PriorityEngine
-    EmergencyCheck["Emergency Keyword Boost"] --> PriorityEngine
-    
-    PriorityEngine --> RootCause["🔍 Root Cause Generator"]
-    PriorityEngine --> ResponseGen{"🤖 Response Generation Strategy"}
-    
-    ResponseGen -- Dataset Match --> DatasetResponse["📄 TF-IDF Vector Similarity"]
-    ResponseGen -- Model Template --> GenerativeResponse["✍️ Flan-T5 / Template Strategy"]
-    
-    DatasetResponse --> Output["✅ Final Output Payload"]
-    GenerativeResponse --> Output
-```
-
-### Pipeline Stage Specifications
-
-1. **Language Detection & Translation**: Checks input text using `langdetect`. If non-English, `GoogleTranslator` translates the complaint to English for standard NLP analysis.
-2. **Emergency Keyword Scan**: Scans text for critical triggers (`legal`, `lawsuit`, `police`, `violence`, `data loss`, `hazard`). Presence forces immediate override to `CRITICAL` priority.
-3. **Sentiment Model**: Passes up to 512 tokens to `distilbert-base-uncased-finetuned-sst-2-english` to output label (`POSITIVE`/`NEGATIVE`/`NEUTRAL`) and confidence score ($0.0 - 1.0$).
-4. **Emotion Model**: Passes text to `j-hartmann/emotion-english-distilroberta-base` to classify emotion into `anger`, `fear`, `sadness`, `disgust`, `surprise`, `joy`, or `neutral`.
-5. **Mathematical Priority Scoring**: Computes composite priority score based on sentiment intensity, high-risk emotions, urgency flags, and word count.
-6. **Root Cause Analysis**: Maps category context and emotional tone into diagnostic root-cause descriptions.
-7. **Response Strategy**: If auto-resolvable (`LOW` priority without hard blockers), selects between TF-IDF vector similarity matching against pre-curated datasets (`data/response_model.json`) or `Flan-T5` text generation.
-
----
-
-## 5. Tech Stack
-
-| Layer | Technology | Version | Selection Rationale |
-| :--- | :--- | :--- | :--- |
-| **Language** | Python | `3.10+` | Rich ML ecosystem, native asyncio support, typing annotations. |
-| **Web Framework** | FastAPI | `0.111.0` | Asynchronous speed, Pydantic validation, automatic OpenAPI spec generation. |
-| **Web Server** | Uvicorn | `0.29.0` | Ultra-fast ASGI server implementation based on `uvloop` and `httptools`. |
-| **Database** | MongoDB / PyMongo | `4.8.0` | Document-oriented flexibility for evolving JSON complaint models and fast index queries. |
-| **Local Storage** | Custom JSON Storage | Native | High availability fallback ensuring application functions even without MongoDB. |
-| **NLP Sentiment** | DistilBERT | HuggingFace | 40% smaller than BERT, 60% faster, retains 97% language understanding capabilities. |
-| **NLP Emotion** | DistilRoBERTa | HuggingFace | Fine-tuned RoBERTa specialized for 7-class emotion recognition in support text. |
-| **Generative LLM** | Flan-T5-Small | HuggingFace | Lightweight local seq2seq generation for automated response synthesis. |
-| **Speech-to-Text** | OpenAI Whisper | `base` | Robust multilingual speech recognition resilient to noise and accents. |
-| **Translation** | Deep Translator | `1.11.4` | Direct integration with translation backends without heavy API keys. |
-| **Scheduling** | APScheduler | `3.10.4` | In-process background cron scheduler for continuous SLA escalation jobs. |
-| **Auth & Hash** | PyJWT & Passlib | `2.10.1` | Standard JWT token management and SHA-256 password hashing. |
-| **Frontend** | HTML5 / Jinja2 | `3.1.4` | Server-side rendered templates ensuring zero JavaScript client framework bloat. |
-| **Testing** | PyTest & HTTPX | `9.0.1` | Comprehensive test runner and async HTTP client for FastAPI integration tests. |
-
----
-
-## 6. Folder Structure
-
-```text
-Sentrimail/
-├── app/
-│   ├── __init__.py
-│   ├── main.py                     # Entry point, router mounting, lifespan & CORS
-│   ├── core/                       # Core system architecture & settings
-│   │   ├── __init__.py
-│   │   ├── config.py               # Pydantic BaseSettings management
-│   │   ├── database.py             # MongoDB connection setup & JSON fallback implementation
-│   │   ├── logging.py              # Structured application logger
-│   │   └── security.py             # JWT token handling & password hash utilities
-│   ├── schemas/                    # Pydantic data validation schemas
-│   │   ├── __init__.py
-│   │   ├── admin.py                # Status and response update request schemas
-│   │   ├── complaint.py            # Complaint creation & tracking schemas
-│   │   └── user.py                 # User login & registration schemas
-│   ├── repositories/               # Data access layer (Abstracted queries)
-│   │   ├── __init__.py
-│   │   ├── complaint_repository.py # Complaint CRUD operations & MongoDB queries
-│   │   └── user_repository.py      # User authentication CRUD & login audit log
-│   ├── services/                   # Business logic layer
-│   │   ├── __init__.py
-│   │   ├── ai_service.py           # NLP pipelines, models loading & analysis
-│   │   ├── auth_service.py         # User verification & cookie session manager
-│   │   ├── complaint_service.py    # Complaint lifecycle, auto-backfill & analytics
-│   │   ├── email_service.py        # SMTP email resolution worker
-│   │   └── transcription_service.py# OpenAI Whisper audio transcription wrapper
-│   └── routers/                    # FastAPI route controllers
-│       ├── __init__.py
-│       ├── admin.py                # Admin dashboard & triage endpoints
-│       ├── api.py                  # Programmatic REST API endpoints
-│       ├── auth.py                 # Auth endpoints (/login, /register, /logout)
-│       └── user.py                 # User portal endpoints (/user/submit, /track)
-├── data/                           # Application data & pre-trained ML model vectors
-│   ├── complaints.json             # Local JSON fallback for complaints
-│   ├── response_model.json         # TF-IDF vectors for dataset-driven responses
-│   └── users.json                  # Local JSON fallback for users
-├── static/                         # CSS, images, and static frontend assets
-├── templates/                      # Jinja2 HTML templates for web pages
-├── tests/                          # Automated PyTest integration test suite
-│   └── test_app.py
-├── .env.example                    # Sample environment variable configuration
-├── migrate.py                      # Database migration script
-├── Procfile                        # Deployment process manager config
-├── requirements.txt                # Python package requirements
-├── run.py                          # Local application server runner
-└── README.md                       # Complete documentation
+graph LR
+    A[Raw complaint text] --> B[Language detection & optional translation]
+    B --> C[Sentiment pipeline]
+    B --> D[Emotion pipeline]
+    C --> E[Sentiment label & score]
+    D --> F[Emotion label & score]
+    A --> G[Category & issue inference]
+    G --> H[Priority engine]
+    E & F & H & G --> I[Response generation cascade]
+    I --> J[Final response (admin & auto‑reply)]
 ```
 
 ---
 
-## 7. Database Design
+## 5. Priority Scoring Engine
+The deterministic engine lives in **`app/core/priority.py`** and follows a transparent rule set:
+1. **Sentiment contribution** – strong negative sentiment adds up to +20 points, positive sentiment subtracts ‑4.
+2. **Emotion contribution** – each emotion has a high/low score (e.g., anger +18 or +12).
+3. **Keyword scan** – emergency keywords add +60, urgency keywords add +18.
+4. **Issue / Category** – severe issues (fraud, security, data_loss, outage) add +15; elevated categories (billing, technical, refund) add +5.
+5. **History** – repeated complaints (+7) and unresolved complaints (+5).
+6. **SLA** – >48 h adds +25, >24 h adds +15.
+7. **Length** – >100 words adds +5.
+8. **Capping** – final score clamped to 0‑100.
+9. **Band mapping** –
+   - **CRITICAL** ≥ 75 or any emergency term.
+   - **HIGH** ≥ 45.
+   - **MEDIUM** ≥ 20.
+   - **LOW** < 20.
 
-SentriMail supports MongoDB primary persistence with transparent failover to a structured JSON file storage engine (`app/core/database.py`).
+The engine also returns a list of **human‑readable reasons** and the raw contribution map for auditability.
 
-```mermaid
-erDiagram
-    USERS {
-        string id PK
-        string username UK
-        string password_hash
-        string email
-        string role
-        string created_at
-    }
+---
 
-    COMPLAINTS {
-        string id PK
-        string complaint_code UK
-        string title
-        string category
-        string description
-        string original_text
-        string original_language
-        boolean keyword_escalated
-        string username FK
-        string email
-        string priority
-        int priority_score
-        string priority_description
-        string sentiment_label
-        float sentiment_score
-        string emotion_label
-        float emotion_score
-        string root_cause_summary
-        boolean auto_resolvable
-        string status
-        string admin_response
-        string admin_suggested_response
-        string model_used
-        string created_at
-        string updated_at
-    }
+## 6. Response Generation & Root‑Cause Logic
+1. **Dataset retrieval** – TF‑IDF vectors are stored in `data/response_model.json`. The service computes a cosine similarity between the complaint vector and each sample, preferring matches with matching category/priority.
+2. **Generic response filter** – `_is_generic_dataset_response` discards templated replies that contain two or more generic markers.
+3. **Local LLM fallback** – If the dataset returns nothing, the `flan‑t5‑small` pipeline generates a short, empathetic response.
+4. **Category‑specific templates** – When the LLM also fails, `_get_category_fallback` supplies a handcrafted template (e.g., billing, auth, delivery).
+5. **Final generic fallback** – Guarantees a reply even for unknown cases.
+6. **Root‑cause summary** – `_generate_root_cause` augments the base category description with emotion‑specific advice (e.g., “Customer tone indicates anxiety …”).
 
-    LOGIN_LOGS {
-        string id PK
-        string username FK
-        string role
-        string login_time
-    }
+All steps are logged, and the chosen `response_source` (`dataset`, `local_llm`, `category_template`, `generic_fallback`) is stored alongside the complaint for traceability.
 
-    REPLIES {
-        string id PK
-        string complaint_id FK
-        string reply_text
-        boolean is_ai_reply
-        string replied_at
-        string replied_by
-    }
+---
 
-    USERS ||--o{ COMPLAINTS : "submits"
-    USERS ||--o{ LOGIN_LOGS : "logs_in"
-    COMPLAINTS ||--o{ REPLIES : "contains"
-```
-
-### Collection & Field Specifications
-
-#### 1. `users` Collection
-- `username` *(String, Indexed, Unique)*: Unique user identifier.
-- `password` *(String)*: SHA-256 hashed password string.
-- `role` *(String)*: Access level (`admin` or `user`).
-- `email` *(String)*: User notification email address.
-
-#### 2. `complaints` Collection
-- `complaint_code` *(String, Indexed)*: Human-readable tracking ID (`SENT-2026-0001`).
-- `priority` *(String, Indexed)*: Priority severity level (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`).
-- `status` *(String, Indexed)*: Lifecycle status (`pending`, `pending_admin`, `auto_replied`, `resolved`).
-- `sentiment_label` / `emotion_label` *(String)*: Predicted sentiment and emotion classes.
-- `priority_score` *(Integer)*: Calculated mathematical urgency score ($0 - 100$).
-- `created_at` *(ISO Timestamp, Indexed)*: Ingestion timestamp used for SLA escalation.
+## 7. Database & Persistence
+- **Primary store** – MongoDB (`MONGODB_URI` defaults to `mongodb://localhost:27017`). Collections: `complaints`, `users`.
+- **Fallback** – `_DBProxy` in `app/core/database.py` automatically switches to a JSON file (`data/complaints.json`) when the MongoDB client cannot connect.
+- **Schema** – Complaints store the original text, translated text, analysis results (sentiment, emotion, priority, root cause), response suggestions, and audit fields (`created_at`, `updated_at`).
+- **Durability** – JSON fallback is written atomically to avoid corruption.
 
 ---
 
 ## 8. API Documentation
+| Method | Endpoint | Purpose | Authentication |
+|---|---|---|---|
+| `GET /` | Root redirect | Sends logged‑in users to appropriate dashboard | Session cookie |
+| `GET /login` | Login page | Render login form | None |
+| `POST /login` | Authenticate | Returns JWT cookie on success | None |
+| `GET /register` | Registration page | Render sign‑up form | None |
+| `POST /register` | Create account | Stores user in DB | None |
+| `GET /admin/dashboard` | Admin overview | Shows complaint stats & list | Admin role |
+| `GET /admin/complaint/{id}` | Detail view | Shows full analysis & response editor | Admin |
+| `POST /admin/complaint/{id}/status` | Update status | Change to `resolved`, `pending`, etc. | Admin |
+| `POST /admin/complaint/{id}/response` | Save admin response | Optionally sends resolution email | Admin |
+| `GET /api/complaint/{id}` | JSON complaint data | Read‑only API for external tools | JWT |
+| `POST /api/complaint` | Submit new complaint | Returns analysis payload | JWT |
+| `POST /api/auth/refresh` | Refresh JWT | Extends session | JWT |
 
-### Public & Authentication Endpoints
-
-#### 1. User Login
-- **Endpoint**: `POST /login`
-- **Content-Type**: `application/x-www-form-urlencoded`
-- **Form Data**:
-  ```json
-  {
-    "username": "alice",
-    "password": "alice123"
-  }
-  ```
-- **Response**: `302 Found` (Redirects to `/user/dashboard` or `/admin/dashboard` with HTTP-Only JWT Cookie set).
+All routes return proper HTTP status codes and JSON bodies where appropriate. Errors are handled by a custom exception handler that returns a JSON payload for `/api/*` routes and an HTML error page for UI routes.
 
 ---
 
-### REST API Endpoints (`/api/*`)
+## 9. Technical Stack
+| Layer | Technology | Purpose |
+|---|---|---|
+| Web framework | **FastAPI** (async) | Routing, validation, automatic OpenAPI docs |
+| Templating | **Jinja2** | Server‑side HTML rendering |
+| Background jobs | **APScheduler** | Hourly complaint escalation |
+| Database | **MongoDB** (PyMongo) | Persistent storage |
+| Fallback storage | **JSON file** (native Python I/O) | Offline operation |
+| NLP models | **🤗 Transformers** (DistilBERT, DistilRoBERTa, FLAN‑T5) | Sentiment, emotion, generation |
+| Language detection | **langdetect** | Auto‑detect source language |
+| Optional translation | **deep_translator** (Google) | Translate non‑English complaints |
+| Audio transcription | **whisper** (optional) | Speech‑to‑text for voice complaints |
+| Scheduling | **APScheduler** | Background escalation job |
+| Testing | **pytest**, **httpx** (FastAPI TestClient) | Unit & integration tests |
 
-#### 2. Programmatic Complaint Analysis
-- **Endpoint**: `POST /api/analyze`
-- **Headers**: `Content-Type: application/json`, `Cookie: session=<token>`
-- **Request Body**:
-  ```json
-  {
-    "text": "My server crashed and lost all database tables! Urgent help required!"
-  }
-  ```
-- **Response (`200 OK`)**:
-  ```json
-  {
-    "sentiment_label": "NEGATIVE",
-    "sentiment_score": 0.985,
-    "emotion_label": "Fear",
-    "emotion_score": 0.912,
-    "priority": "CRITICAL",
-    "priority_color": "#ef4444",
-    "priority_score": 95,
-    "priority_description": "Immediate attention required.",
-    "root_cause_summary": "Likely caused by service instability, system defects, or reliability gaps. Customer tone indicates anxiety and requires clear reassurance.",
-    "auto_resolvable": false,
-    "auto_resolution_reason": "Requires admin review.",
-    "user_auto_response": "",
-    "admin_suggested_response": "Dear Customer,\n\nWe sincerely apologize. We have escalated this to our critical incident team due to potential service instability. Immediate containment and root-cause investigation are in progress...\n\nRegards,\nSentriMail Resolution Team",
-    "ai_suggested_response": "Dear Customer,\n\nWe sincerely apologize...",
-    "model_used": "transformer",
-    "response_source": "template",
-    "reference_id": "N/A"
-  }
-  ```
+---
 
-#### 3. Audio Transcription Endpoint
-- **Endpoint**: `POST /api/transcribe`
-- **Content-Type**: `multipart/form-data`
-- **Body**: `audio`: `[WAV/MP3 File Bytes]`
-- **Response (`200 OK`)**:
-  ```json
-  {
-    "text": "I was double charged on my invoice last night and need a refund immediately."
-  }
-  ```
+## 10. Project Structure
+```
+Sentrimail/
+├─ app/
+│  ├─ core/                 # config, DB proxy, logging, priority engine
+│  ├─ services/            # AI pipeline, auth, email, policy intelligence
+│  ├─ routers/             # FastAPI routers (auth, user, admin, api)
+│  ├─ repositories/        # Data access abstractions
+│  ├─ schemas/             # Pydantic request/response models
+│  └─ main.py              # Application entry point
+├─ data/
+│  ├─ response_model.json  # TF‑IDF dataset for retrieval
+│  └─ policies/            # Sample policy documents
+├─ static/ & templates/    # Front‑end assets and HTML templates
+├─ tests/                  # pytest suite
+├─ .env.example            # Environment variable template
+├─ requirements.txt        # Python dependencies
+└─ README.md               # This documentation
+```
 
-#### 4. System Analytics Stats
-- **Endpoint**: `GET /api/dashboard-stats`
-- **Response (`200 OK`)**:
-  ```json
-  {
-    "category_counts": { "technical": 12, "billing": 5, "other": 3 },
-    "priority_counts": { "critical": 2, "high": 4, "medium": 6, "low": 8 },
-    "daily_counts": [ { "date": "2026-07-22", "count": 20 } ],
-    "stats": {
-      "total": 20,
-      "pending_admin": 6,
-      "resolved_today": 4,
-      "avg_response_hours": 1.5
-    }
-  }
-  ```
+---
 
-#### cURL Request Example
+## 11. Installation & Execution
 ```bash
-curl -X POST "http://localhost:8000/api/analyze" \
-     -H "Content-Type: application/json" \
-     -d '{"text": "App crashes whenever I open settings."}'
+# 1. Clone the repository
+git clone https://github.com/Lohith-07-coder/Sentrimail.git
+cd Sentrimail
+
+# 2. Create a virtual environment (Windows PowerShell example)
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Set up environment variables
+cp .env.example .env
+# Edit .env if you want to point to a real MongoDB instance
+
+# 5. Run the application
+python run.py   # Starts Uvicorn on http://0.0.0.0:8000
 ```
+**Troubleshooting**
+- If MongoDB is not reachable, the app will automatically use the JSON fallback (no extra action needed).
+- Transformer model download may take a few minutes on first run; ensure internet connectivity.
+- To run tests: `pytest -vv`
 
 ---
 
-## 9. Machine Learning Models
+## 12. Application Screenshots & Results
+| View | Description | Screenshot |
+|---|---|---|
+| **Admin Dashboard** | Overview of complaint volumes, priority distribution, and pending tickets. | `static/screenshots/admin_dashboard.png` |
+| **Complaint Detail** | AI analysis results, priority, root‑cause, and suggested response. | `static/screenshots/complaint_detail.png` |
+| **User Submission** | Form for entering a new complaint (text, optional audio upload). | `static/screenshots/submit_complaint.png` |
+| **Public Tracking** | Lookup of complaint code status (no authentication required). | `static/screenshots/track.png` |
 
-SentriMail employs a hybrid architecture balancing transformer precision with rule-based fallback speed:
-
-```mermaid
-graph TD
-    Input[Input Text] --> TransformerCheck{Transformers Available?}
-    
-    TransformerCheck -- Yes --> SentimentTF[DistilBERT Sentiment Pipeline]
-    TransformerCheck -- Yes --> EmotionTF[DistilRoBERTa Emotion Pipeline]
-    TransformerCheck -- Yes --> GenTF[Flan-T5 Text Generation]
-    
-    TransformerCheck -- No / Fallback --> SentimentRule[Rule-Based Sentiment Heuristics]
-    TransformerCheck -- No / Fallback --> EmotionRule[Keyword Pattern Emotion Engine]
-    TransformerCheck -- No / Fallback --> GenRule[Template Generation Engine]
-    
-    SentimentTF --> Aggregator[Pipeline Aggregator]
-    EmotionTF --> Aggregator
-    GenTF --> Aggregator
-    SentimentRule --> Aggregator
-    EmotionRule --> Aggregator
-    GenRule --> Aggregator
-```
-
-### Model Summary
-
-| Task | Model Architecture | Parameters / Source | Primary Role |
-| :--- | :--- | :--- | :--- |
-| **Sentiment Analysis** | `distilbert-base-uncased-finetuned-sst-2-english` | 66M Params | Binary & confidence scoring of negative/positive tone. |
-| **Emotion Analysis** | `j-hartmann/emotion-english-distilroberta-base` | 82M Params | Classifies tone into Anger, Fear, Sadness, Disgust, Surprise, Joy. |
-| **Auto Response Gen** | `google/flan-t5-small` | 60M Params | Generates custom response copy for safe low-urgency complaints. |
-| **Speech-to-Text** | `OpenAI Whisper` (`base`) | 74M Params | Transcribes raw voice audio files into text. |
-| **Response Retrieval**| Custom TF-IDF Cosine Similarity | Custom Vector Model | Matches input text against pre-curated response datasets. |
+*If any of the above images are missing, replace the placeholder path with a real screenshot once you have the UI running.*
 
 ---
 
-## 10. Priority Engine
-
-SentriMail uses a mathematical scoring model to evaluate incoming complaints.
-
-### Mathematical Formulation
-
-The Priority Score ($S$) is defined as:
-
-$$S = \min\left(100, \, S_{\text{sentiment}} + S_{\text{emotion}} + S_{\text{urgency}} + S_{\text{length}}\right)$$
-
-Where:
-- **Sentiment Score ($S_{\text{sentiment}}$)**:
-  $$S_{\text{sentiment}} = \begin{cases} \lfloor C_{\text{sent}} \times 40 \rfloor & \text{if Sentiment = NEGATIVE} \\ 10 & \text{if Sentiment = NEUTRAL} \\ 0 & \text{if Sentiment = POSITIVE} \end{cases}$$
-- **Emotion Score ($S_{\text{emotion}}$)**:
-  $$S_{\text{emotion}} = \begin{cases} \lfloor C_{\text{emot}} \times 40 \rfloor & \text{if Emotion } \in \{\text{Anger, Fear, Disgust}\} \\ \lfloor C_{\text{emot}} \times 20 \rfloor & \text{if Emotion } \in \{\text{Sadness, Surprise}\} \\ 0 & \text{otherwise} \end{cases}$$
-- **Urgency Boost ($S_{\text{urgency}}$)**:
-  $$S_{\text{urgency}} = \begin{cases} 20 & \text{if text contains any } U_{\text{triggers}} \\ 0 & \text{otherwise} \end{cases}$$
-  Where $U_{\text{triggers}} = \{\text{urgent, immediately, asap, emergency, lawsuit, police, critical, outage, data loss}\}$.
-- **Length Score ($S_{\text{length}}$)**:
-  $$S_{\text{length}} = \begin{cases} 5 & \text{if Word Count } > 100 \\ 0 & \text{otherwise} \end{cases}$$
-
-### Priority Severity Map
-
-```mermaid
-gantt
-    title Priority Score Classification Thresholds
-    dateFormat X
-    axisFormat %s
-    
-    section LOW (0 - 24)
-    Auto-handled if safe : 0, 25
-    section MEDIUM (25 - 49)
-    Moderate concern : 25, 50
-    section HIGH (50 - 74)
-    Prioritize human : 50, 75
-    section CRITICAL (75 - 100)
-    Immediate action required : 75, 100
-```
+## 13. Limitations & Future Work
+- **No vector DB** – Currently uses TF‑IDF; integrating Qdrant or Pinecone would improve semantic retrieval.
+- **Model evaluation** – No quantitative metrics (accuracy, F1) are stored; adding a benchmark script would aid research.
+- **Multilingual UI** – Only English templates are provided; full localization is a planned upgrade.
+- **Scalability** – Single‑process FastAPI with APScheduler works for prototyping; production would benefit from a process manager (Gunicorn) and a dedicated task queue (Celery/RQ).
+- **Privacy & security hardening** – JWT secret rotation, rate limiting, and CSP headers are not yet enforced.
 
 ---
 
-## 11. Vector Search & Response Retrieval Architecture
-
-For low-urgency complaints, SentriMail matches incoming descriptions against historical resolution patterns stored in `data/response_model.json`.
-
-```mermaid
-flowchart TD
-    InputText["📝 Input Complaint Text"] --> Tokenizer["🔤 Tokenizer & Regex Token Filter"]
-    Tokenizer --> Vectorizer["📐 TF-IDF Vectorizer (L2 Normalized)"]
-    Vectorizer --> SimilarityEngine["🔍 Dot-Product Cosine Similarity"]
-    
-    Dataset["📄 Pre-computed Vector Dataset (data/response_model.json)"] --> SimilarityEngine
-    
-    SimilarityEngine --> CategoryBoost["➕ Category & Priority Context Boost (+0.05)"]
-    CategoryBoost --> ThresholdCheck{"Score >= 0.12?"}
-    
-    ThresholdCheck -- Yes --> TemplateFormatter["✏️ Dynamic Variable Substitution ({username})"]
-    ThresholdCheck -- No --> FallbackTemplate["✍️ Fallback Template Response"]
-```
-
----
-
-## 12. Deployment Architecture
-
-```mermaid
-flowchart TD
-    subgraph GitHub ["GitHub Infrastructure"]
-        Repo["📦 GitHub Repository (Lohith-07-coder/Sentrimail)"]
-        Actions["⚙️ GitHub Actions CI/CD"]
-    end
-
-    subgraph ProductionHost ["Production Cloud Environment (Railway / Cloud)"]
-        AppContainer["🐳 Docker Container / Uvicorn Server"]
-        PyTestRunner["🧪 PyTest Integration Suite"]
-    end
-
-    subgraph Services ["External Services & Databases"]
-        MongoCluster[("🍃 Managed MongoDB Atlas")]
-        SMTPHost["📧 External SMTP Server"]
-    end
-
-    Repo --> Actions
-    Actions -- Run Integration Tests --> PyTestRunner
-    PyTestRunner -- On Success --> AppContainer
-    AppContainer --> MongoCluster
-    AppContainer --> SMTPHost
-```
-
----
-
-## 13. Installation
-
-### Prerequisites
-- Python `3.10` or higher
-- Git
-- MongoDB (Optional; local JSON engine will automatically take over if unavailable)
-
-### Step-by-Step Installation
-
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/Lohith-07-coder/Sentrimail.git
-   cd Sentrimail
-   ```
-
-2. **Create and activate a virtual environment**:
-   ```bash
-   # Windows PowerShell
-   python -m venv .venv
-   .\.venv\Scripts\Activate.ps1
-
-   # Linux/macOS
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
-
-3. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Initialize Environment Variables**:
-   Copy `.env.example` to `.env`:
-   ```bash
-   cp .env.example .env
-   ```
-
----
-
-## 14. Environment Variables
-
-| Variable | Required | Default Value | Purpose |
-| :--- | :--- | :--- | :--- |
-| `MONGODB_URI` | No | `mongodb://localhost:27017` | MongoDB connection string. |
-| `MONGODB_DB_NAME` | No | `sentrimail` | Primary MongoDB database name. |
-| `SECRET_KEY` | No | `super-secret-key-change-in-production` | Key for JWT token signing. |
-| `PORT` | No | `8000` | HTTP application server port. |
-| `MAIL_SERVER` | No | `localhost` | SMTP server for resolution emails. |
-| `MAIL_PORT` | No | `587` | SMTP port. |
-| `MAIL_USERNAME` | No | `""` | SMTP login username. |
-| `MAIL_PASSWORD` | No | `""` | SMTP login password. |
-
----
-
-## 15. Running the Project
-
-### Running Locally
-Launch the application server with:
+## 14. Testing & Evaluation
+The repository includes a pytest suite covering:
+- Router sanity checks (`/login`, `/register`, `/api/complaint`).
+- Service unit tests for priority calculation and AI pipeline fallbacks.
+Run with:
 ```bash
-python run.py
+pytest -vv
 ```
-Output:
-```text
-==================================================
-  🛡️  SentriMail — AI Complaint Management
-==================================================
- -> Running on port 8000
-  → Admin:  admin / admin123
-  → User:   alice / alice123  |  bob / bob123
-==================================================
-```
-
-### Running Automated Tests
-```bash
-python -m pytest tests/test_app.py
-```
+Model‑level performance (e.g., sentiment accuracy) is **not** measured in the current codebase.
 
 ---
 
-## 15. Architecture & Model Comparison
+## 15. Conclusion
+SentriMail demonstrates how a modest codebase can combine deterministic business rules with lightweight Transformer models to deliver an end‑to‑end complaint management system. The architecture is intentionally **clean** (presentation → domain → data layers) and **fault‑tolerant** thanks to the JSON fallback and rule‑based AI degradations. Future enhancements around vector search, multilingual UI, and rigorous model evaluation would turn this prototype into a production‑ready solution.
 
-### Baseline (Monolithic) Architecture
-- Simple FastAPI app with all routes, services, and DB logic in a single module.
-- Direct calls to AI model loading at startup.
-- No background scheduler; complaint escalation handled synchronously.
-
-### Current (Clean Architecture) Design
-- **Presentation Layer**: FastAPI routers (`auth_router`, `user_router`, `admin_router`, `api_router`).
-- **Domain Layer**: Services (`auth_service`, `complaint_service`, `ai_service`) encapsulating business logic.
-- **Data Layer**: Repositories handling MongoDB interactions.
-- **Infrastructure**: APScheduler for background escalation, AI model loading as separate services.
-- **Orchestration**: Background scheduler runs hourly jobs, AI services loaded on demand.
-
-**Reasons for Transition**
-- Improved separation of concerns → easier testing & maintenance.
-- Scalable background processing (APS) for complaint escalation.
-- Lazy AI model loading reduces startup latency.
-- Future‑proof for adding more services (e.g., vector DB, LLM agents).
-
-### Tech Stack Rationale
-- **FastAPI** – high‑performance async framework, automatic OpenAPI docs.
-- **MongoDB** – flexible schema for storing complaints, users, and AI annotations.
-- **APScheduler** – lightweight background job orchestration without external broker.
-- **Jinja2** – server‑side templating for admin UI.
-- **AI Models** – PyTorch/TensorFlow models for sentiment, root‑cause analysis, response generation.
-
-### Real‑World Problem Solved
-SentriMail automates enterprise‑level complaint handling:
-- Detects language, sentiment, and urgency.
-- Provides AI‑generated root‑cause analysis and suggested replies.
-- Escalates critical tickets automatically via scheduled jobs.
-- Offers a public tracking portal for transparency.
+---
 
 ### Upgraded System Architecture Diagram
-![Upgraded System Architecture](file:///C:/Users/Lohith/.gemini/antigravity-ide/brain/7ce177fd-7eda-4f45-867e-65e9d3c80c7e/upgraded_system_architecture_1791533979490.png)
+![Upgraded System Architecture](upgraded_system_architecture.png)
 
-### Transformer Design
-
-The SentriMail AI component uses a transformer model for language understanding and response generation. Below is a visual overview of the transformer architecture.
-
-![Transformer Design](file:///C:/Users/Lohith/.gemini/antigravity-ide/brain/7ce177fd-7eda-4f45-867e-65e9d3c80c7e/transformer_design_1791533890408.png)
-
-## 16. Screenshots & UI Showcase
-
-| View | Description | Screenshot Placeholder |
-| :--- | :--- | :--- |
-| **Admin Dashboard** | Real-time analytics, SLA tracking, priority breakdown, and ticket management. | `![Admin Dashboard](static/screenshots/admin_dashboard.png)` |
-| **Complaint Detail** | AI root-cause analysis, sentiment/emotion gauge, and suggested responses. | `![Complaint Detail](static/screenshots/complaint_detail.png)` |
-| **User Portal** | Customer complaint submission form with language detection & voice upload. | `![User Submit](static/screenshots/submit_complaint.png)` |
-| **Public Tracking** | Public complaint code status lookup view. | `![Track Complaint](static/screenshots/track.png)` |
-
----
-
-## 17. Future Improvements
-
-- **[PLANNED]** **Vector DB Integration**: Migrate dataset response matching from local TF-IDF vectors to Qdrant or Pinecone for scale.
-- **[PLANNED]** **LLM Agent Tool Calling**: Integrate LangChain/LangGraph agents capable of issuing refund transactions via API.
-- **[PLANNED]** **WebSocket Real-time Push**: Push incoming `CRITICAL` priority alerts directly to admin dashboards via WebSockets.
-- **[PLANNED]** **OAuth2 Integration**: Support Google and Microsoft Single Sign-On (SSO).
-
----
-
-## 18. Performance Metrics
-
-| Metric | Measured Value | Benchmark Conditions |
-| :--- | :--- | :--- |
-| **API Response Latency (Rule Fallback)** | `12 ms` | Intel i7 / 16GB RAM, Single Request |
-| **API Response Latency (Transformer)** | `185 ms` | CPU Inference (`DistilBERT` + `DistilRoBERTa`) |
-| **Whisper Transcription Latency** | `1.2 s` | 10-second WAV Audio Clip |
-| **Peak Throughput** | `450 req/sec` | Uvicorn Workers ($N=4$), Rule Engine |
-| **Memory Footprint** | `~420 MB` | Models pre-loaded in memory |
-
----
-
-## 19. Security & Compliance
-
-- **Authentication**: JWT tokens stored in `HTTPOnly`, `SameSite` browser cookies preventing XSS token theft.
-- **Password Security**: Passlib SHA-256 password hashing with unique salt values.
-- **SQL/NoSQL Injection Protection**: Abstracted PyMongo query parameters enforcing strict type validation.
-- **Input Sanitization**: Pydantic input model validation stripping illegal control characters.
-
----
-
-## 20. Engineering Challenges
-
-1. **High Availability without Database Infrastructure**:
-   - *Challenge*: Demonstrating or running the app locally required users to have MongoDB installed.
-   - *Solution*: Built a transparent proxy pattern (`_DBProxy` in `app/core/database.py`) that falls back to file-backed JSON storage if MongoDB connection fails.
-2. **Preventing Generic Dataset Response Overrides**:
-   - *Challenge*: Historical dataset responses sometimes contained generic boilerplate text that degraded priority AI recommendations.
-   - *Solution*: Implemented a generic response detector (`_is_generic_dataset_response`) that discards weak matches for `HIGH` and `CRITICAL` complaints.
-
----
-
-## 21. Lessons Learned
-
-- **Layered Decoupling**: Keeping router endpoints decoupled from business logic simplifies unit testing with `fastapi.testclient.TestClient`.
-- **Hybrid AI Fallbacks**: Relying solely on remote LLMs introduces latency and cost; combining small local Transformer models with rule-based fallback delivers zero-downtime reliability.
-
----
-
-## 22. Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository (`https://github.com/Lohith-07-coder/Sentrimail/fork`).
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`).
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`).
-4. Push to the branch (`git push origin feature/AmazingFeature`).
-5. Open a Pull Request.
-
-
-
-## 23. Acknowledgements
-
-- [FastAPI](https://fastapi.tiangolo.com/)
-- [HuggingFace Transformers](https://huggingface.co/docs/transformers/)
-- [OpenAI Whisper](https://github.com/openai/whisper)
-- [PyMongo](https://pymongo.readthedocs.io/)
-
----
-
-## 24. Contact & Support
-
-- **Repository Owner**: Lohith
-- **GitHub**: [@Lohith-07-coder](https://github.com/Lohith-07-coder)
-- **Project Link**: [https://github.com/Lohith-07-coder/Sentrimail](https://github.com/Lohith-07-coder/Sentrimail)
+*Place the image `upgraded_system_architecture.png` in the repository (e.g., under `docs/` or `static/`) and commit it alongside this README.*
