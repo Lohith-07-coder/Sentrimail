@@ -67,24 +67,24 @@ The system is designed for **high reliability**: if MongoDB is unavailable, the 
 ## 3. System Architecture
 ```mermaid
 flowchart TD
-    A[User / Admin (Browser)] -->|HTTP| B[FastAPI Application]
-    B --> C[Auth Router]
-    B --> D[User Router]
-    B --> E[Admin Router]
-    B --> F[API Router]
-    D & F --> G[AI Service]
-    G --> H[Sentiment Pipeline (DistilBERT) / Rule‑based]
-    G --> I[Emotion Pipeline (DistilRoBERTa) / Rule‑based]
-    G --> J[Generative Pipeline (FLAN‑T5) – optional]
-    G --> K[Response Retrieval (TF‑IDF dataset)]
-    G --> L[Priority Engine (app/core/priority.py)]
-    L --> M[Priority Band (CRITICAL/HIGH/MEDIUM/LOW)]
-    H & I & K & J --> N[Complaint Analysis Result]
-    N --> O[Repository Layer]
-    O --> P[MongoDB]
-    O --> Q[JSON fallback (data/complaints.json)]
-    B --> R[APScheduler (background escalation)]
-    R --> S[Escalate Complaints Job]
+    A["User / Admin (Browser)"] -->|HTTP| B["FastAPI Application"]
+    B --> C["Auth Router"]
+    B --> D["User Router"]
+    B --> E["Admin Router"]
+    B --> F["API Router"]
+    D & F --> G["AI Service"]
+    G --> H["Sentiment Pipeline (DistilBERT) / Rule‑based"]
+    G --> I["Emotion Pipeline (DistilRoBERTa) / Rule‑based"]
+    G --> J["Generative Pipeline (FLAN‑T5) – optional"]
+    G --> K["Response Retrieval (TF‑IDF dataset)"]
+    G --> L["Priority Engine (app/core/priority.py)"]
+    L --> M["Priority Band (CRITICAL/HIGH/MEDIUM/LOW)"]
+    H & I & K & J --> N["Complaint Analysis Result"]
+    N --> O["Repository Layer"]
+    O --> P["MongoDB"]
+    O --> Q["JSON fallback (data/complaints.json)"]
+    B --> R["APScheduler (background escalation)"]
+    R --> S["Escalate Complaints Job"]
     style B fill:#0e639c,stroke:#333,stroke-width:2px,color:#fff
     style G fill:#ffb900,stroke:#333,stroke-width:2px,color:#000
     style O fill:#d83b01,stroke:#333,stroke-width:2px,color:#fff
@@ -114,15 +114,15 @@ If any of the above pipelines raise an exception, the service automatically swit
 ### Processing Flow (simplified)
 ```mermaid
 graph LR
-    A[Raw complaint text] --> B[Language detection & optional translation]
-    B --> C[Sentiment pipeline]
-    B --> D[Emotion pipeline]
-    C --> E[Sentiment label & score]
-    D --> F[Emotion label & score]
-    A --> G[Category & issue inference]
-    G --> H[Priority engine]
-    E & F & H & G --> I[Response generation cascade]
-    I --> J[Final response (admin & auto‑reply)]
+    A["Raw complaint text"] --> B["Language detection & optional translation"]
+    B --> C["Sentiment pipeline"]
+    B --> D["Emotion pipeline"]
+    C --> E["Sentiment label & score"]
+    D --> F["Emotion label & score"]
+    A --> G["Category & issue inference"]
+    G --> H["Priority engine"]
+    E & F & H & G --> I["Response generation cascade"]
+    I --> J["Final response (admin & auto‑reply)"]
 ```
 
 ---
@@ -292,6 +292,6 @@ SentriMail demonstrates how a modest codebase can combine deterministic business
 ---
 
 ### Upgraded System Architecture Diagram
-![Upgraded System Architecture](upgraded_system_architecture.png)
+![Upgraded System Architecture](docs/upgraded_system_architecture.png)
 
 *Place the image `upgraded_system_architecture.png` in the repository (e.g., under `docs/` or `static/`) and commit it alongside this README.*
