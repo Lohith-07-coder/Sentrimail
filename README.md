@@ -669,8 +669,14 @@ SentriMail automates enterprise‑level complaint handling:
 - Escalates critical tickets automatically via scheduled jobs.
 - Offers a public tracking portal for transparency.
 
-### System Architecture Diagram
-![System Architecture](file:///C:/Users/Lohith/.gemini/antigravity-ide/brain/7ce177fd-7eda-4f45-867e-65e9d3c80c7e/system_architecture_1791533621625.png)
+### Upgraded System Architecture Diagram
+![Upgraded System Architecture](file:///C:/Users/Lohith/.gemini/antigravity-ide/brain/7ce177fd-7eda-4f45-867e-65e9d3c80c7e/upgraded_system_architecture_1791533979490.png)
+
+### Transformer Design
+
+The SentriMail AI component uses a transformer model for language understanding and response generation. Below is a visual overview of the transformer architecture.
+
+![Transformer Design](file:///C:/Users/Lohith/.gemini/antigravity-ide/brain/7ce177fd-7eda-4f45-867e-65e9d3c80c7e/transformer_design_1791533890408.png)
 
 ## 16. Screenshots & UI Showcase
 
