@@ -635,6 +635,43 @@ python -m pytest tests/test_app.py
 
 ---
 
+## 15. Architecture & Model Comparison
+
+### Baseline (Monolithic) Architecture
+- Simple FastAPI app with all routes, services, and DB logic in a single module.
+- Direct calls to AI model loading at startup.
+- No background scheduler; complaint escalation handled synchronously.
+
+### Current (Clean Architecture) Design
+- **Presentation Layer**: FastAPI routers (`auth_router`, `user_router`, `admin_router`, `api_router`).
+- **Domain Layer**: Services (`auth_service`, `complaint_service`, `ai_service`) encapsulating business logic.
+- **Data Layer**: Repositories handling MongoDB interactions.
+- **Infrastructure**: APScheduler for background escalation, AI model loading as separate services.
+- **Orchestration**: Background scheduler runs hourly jobs, AI services loaded on demand.
+
+**Reasons for Transition**
+- Improved separation of concerns → easier testing & maintenance.
+- Scalable background processing (APS) for complaint escalation.
+- Lazy AI model loading reduces startup latency.
+- Future‑proof for adding more services (e.g., vector DB, LLM agents).
+
+### Tech Stack Rationale
+- **FastAPI** – high‑performance async framework, automatic OpenAPI docs.
+- **MongoDB** – flexible schema for storing complaints, users, and AI annotations.
+- **APScheduler** – lightweight background job orchestration without external broker.
+- **Jinja2** – server‑side templating for admin UI.
+- **AI Models** – PyTorch/TensorFlow models for sentiment, root‑cause analysis, response generation.
+
+### Real‑World Problem Solved
+SentriMail automates enterprise‑level complaint handling:
+- Detects language, sentiment, and urgency.
+- Provides AI‑generated root‑cause analysis and suggested replies.
+- Escalates critical tickets automatically via scheduled jobs.
+- Offers a public tracking portal for transparency.
+
+### System Architecture Diagram
+![System Architecture](file:///C:/Users/Lohith/.gemini/antigravity-ide/brain/7ce177fd-7eda-4f45-867e-65e9d3c80c7e/system_architecture_1791533621625.png)
+
 ## 16. Screenshots & UI Showcase
 
 | View | Description | Screenshot Placeholder |
