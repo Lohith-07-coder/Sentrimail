@@ -2,7 +2,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111.0-009688.svg)](https://fastapi.tiangolo.com/)
-[![Transformers](https://img.shields.io/badge/🤗%20Hugging%20Face-Transformers-yellow.svg)](https://huggingface.co/)
+[![Transformers](https://img.shields.io/badge/%20Hugging%20Face-Transformers-yellow.svg)](https://huggingface.co/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-4.8.0-47A248.svg)](https://www.mongodb.com/)
 [![Build & Test](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/test_app.py)
 
@@ -50,13 +50,13 @@ The system is designed for **high reliability**: if MongoDB is unavailable, the 
 | Feature | Implementation | Technology | Status |
 |---|---|---|---|
 | Complaint submission (web & API) | `app/routers/api.py`, `templates/` | FastAPI, Jinja2 | Implemented |
-| Sentiment analysis | `app/services/ai_service.py` – huggingface `distilbert‑sst‑2` or rule‑based fallback | 🤗 Transformers | Implemented |
-| Emotion detection | `app/services/ai_service.py` – `j‑hartmann/emotion‑english‑distilroberta‑base` or rule‑based fallback | 🤗 Transformers | Implemented |
+| Sentiment analysis | `app/services/ai_service.py` – huggingface `distilbert‑sst‑2` or rule‑based fallback |  Transformers | Implemented |
+| Emotion detection | `app/services/ai_service.py` – `j‑hartmann/emotion‑english‑distilroberta‑base` or rule‑based fallback | Transformers | Implemented |
 | Multi‑language support | `langdetect` + optional `deep_translator` | LangDetect, Deep Translator | Partial (English fallback) |
 | Audio transcription | `app/services/transcription_service.py` (uses `whisper`) | OpenAI Whisper | Experimental |
 | Priority scoring | Deterministic rule‑based engine (`app/core/priority.py`) | Pure Python | Implemented |
 | Response retrieval (TF‑IDF) | `app/services/response_intelligence.py` (dataset JSON) | Custom TF‑IDF | Implemented |
-| Local LLM generation | `google/flan‑t5‑small` via HuggingFace pipeline | 🤗 Transformers | Implemented |
+| Local LLM generation | `google/flan‑t5‑small` via HuggingFace pipeline |  Transformers | Implemented |
 | Admin dashboard & analytics | Jinja2 templates, router `admin.py` | FastAPI, Jinja2 | Implemented |
 | Background escalation job | APScheduler runs `escalate_complaints` hourly | APScheduler | Implemented |
 | JSON fallback storage | `_DBProxy` in `app/core/database.py` | Python I/O | Implemented |
@@ -195,7 +195,7 @@ All routes return proper HTTP status codes and JSON bodies where appropriate. Er
 | Background jobs | **APScheduler** | Hourly complaint escalation |
 | Database | **MongoDB** (PyMongo) | Persistent storage |
 | Fallback storage | **JSON file** (native Python I/O) | Offline operation |
-| NLP models | **🤗 Transformers** (DistilBERT, DistilRoBERTa, FLAN‑T5) | Sentiment, emotion, generation |
+| NLP models | ** Transformers** (DistilBERT, DistilRoBERTa, FLAN‑T5) | Sentiment, emotion, generation |
 | Language detection | **langdetect** | Auto‑detect source language |
 | Optional translation | **deep_translator** (Google) | Translate non‑English complaints |
 | Audio transcription | **whisper** (optional) | Speech‑to‑text for voice complaints |
