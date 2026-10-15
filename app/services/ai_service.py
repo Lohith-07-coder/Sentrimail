@@ -37,6 +37,11 @@ _response_model = None
 _response_model_loaded = False
 _generative_pipeline = None
 
+# ── Custom Transformer singleton ─────────────────────────────────────────────
+_custom_predictor = None
+_custom_model_loaded = False
+_use_custom_model = False
+
 
 NEGATIVE_KEYWORDS = [
     "angry", "furious", "terrible", "horrible", "awful", "disgusting", "unacceptable",
@@ -278,11 +283,51 @@ def _detect_and_translate(text: str) -> tuple[str, str]:
             return lang, text
     return "en", text
 
+def _load_custom_model() -> None:
+    """Attempt to load the custom SentriTransformer checkpoint.
+
+    Activated only when USE_MULTITASK_MODEL=true in the environment /
+    app config.  Missing checkpoint produces a warning and falls back to
+    the existing HuggingFace pipeline path without crashing.
+    """
+    global _custom_predictor, _custom_model_loaded, _use_custom_model
+    if _custom_model_loaded:
+        return
+    _custom_model_loaded = True
+
+    try:
+        from app.core.config import get_settings
+        settings = get_settings()
+        if not settings.use_multitask_model:
+            logger.info("Custom transformer disabled (USE_MULTITASK_MODEL=false).")
+            return
+
+        from pathlib import Path
+        ckpt_path = getattr(settings, "custom_model_checkpoint_path", None) or "ml/checkpoints/best.pt"
+        ckpt_path = str(Path(ckpt_path))
+
+        from ml.inference.predictor import get_predictor
+        _custom_predictor = get_predictor(ckpt_path)
+        _use_custom_model = True
+        logger.info("Custom SentriTransformer loaded from %s", ckpt_path)
+    except FileNotFoundError as exc:
+        logger.warning(
+            "Custom model checkpoint not found — falling back to HuggingFace pipeline.\n"
+            "Train first: python -m ml.training.train\n%s", exc
+        )
+    except Exception as exc:
+        logger.warning("Custom model load failed — falling back: %s", exc)
+
+
 def _load_models() -> None:
     global _sentiment_pipeline, _emotion_pipeline, _generative_pipeline, _models_loaded, _use_transformers
     if _models_loaded:
         return
 
+    # Attempt custom model first
+    _load_custom_model()
+
+    # Also load HuggingFace pipelines as fallback (unless custom model succeeded)
     try:
         from transformers import pipeline
 
@@ -300,7 +345,7 @@ def _load_models() -> None:
         )
         try:
             _generative_pipeline = pipeline("text2text-generation", model="google/flan-t5-small")
-        except:
+        except Exception:
             _generative_pipeline = None
 
         _use_transformers = True
@@ -385,7 +430,9 @@ def _generate_local_llm_response(text: str, category: str, language: str, userna
         if "{username}" in res:
             res = res.format(username=username)
         return res
-    except:
+    except Exception as exc:
+        # Bug #9 fix (MODEL_COMPARISON.md §4.3): log instead of silently swallowing
+        logger.warning("Local LLM generation failed (generative pipeline error): %s", exc)
         return ""
 
 def _get_category_fallback(category: str, issue: str, text: str, username: str) -> str:
@@ -534,6 +581,40 @@ def analyze_complaint(
     admin_suggestion = final_response
     auto_response = final_response if auto_resolvable else ""
 
+    # ── Custom Transformer enrichment (optional) ──────────────────────────────
+    custom_root_cause = None
+    custom_response_draft = None
+    effective_model_used = "transformer" if _use_transformers else "rule-based"
+
+    if _use_custom_model and _custom_predictor is not None:
+        try:
+            custom_out = _custom_predictor.predict(analysis_text, generate_text=True)
+            # Override classification results only when custom model has higher confidence
+            c_sent = custom_out.get("sentiment", {})
+            c_emot = custom_out.get("emotion", {})
+            if c_sent.get("label") and c_sent.get("confidence", 0) > sentiment.get("score", 0):
+                sentiment = {"label": c_sent["label"].upper(), "score": c_sent["confidence"]}
+            if c_emot.get("label") and c_emot.get("confidence", 0) > emotion.get("score", 0):
+                emotion = {"label": c_emot["label"], "score": c_emot["confidence"]}
+            custom_root_cause = custom_out.get("root_cause_suggestion")
+            custom_response_draft = custom_out.get("response_draft")
+            effective_model_used = "custom_transformer"
+            logger.info(
+                "Custom transformer used for complaint %s (version=%s)",
+                complaint_id, custom_out.get("model_version"),
+            )
+        except Exception as exc:
+            logger.warning("Custom model inference failed; using baseline results: %s", exc)
+
+    root_cause_summary = (
+        custom_root_cause
+        or _generate_root_cause(inferred_category, emotion["label"].lower())
+    )
+    if custom_response_draft and not final_response:
+        final_response = custom_response_draft
+        admin_suggestion = final_response
+        auto_response = final_response if auto_resolvable else ""
+
     return {
         "language": language,
         "translated_text": translated_text if language != "en" else "",
@@ -549,13 +630,13 @@ def analyze_complaint(
         "intent_confidence": intent_data["confidence"],
         "entities": entities,
         "category_indicators": category_terms,
-        "root_cause_summary": _generate_root_cause(inferred_category, emotion["label"].lower()),
+        "root_cause_summary": root_cause_summary,
         "auto_resolvable": auto_resolvable,
         "auto_resolution_reason": "Low priority and safe to auto-handle." if auto_resolvable else ("Low retrieval confidence requires review." if grounded_res.get("human_review_required") else "Requires admin review."),
         "user_auto_response": auto_response,
         "admin_suggested_response": admin_suggestion,
         "ai_suggested_response": admin_suggestion,
-        "model_used": "transformer" if _use_transformers else "rule-based",
+        "model_used": effective_model_used,
         "response_source": response_source,
         "response_confidence": response_confidence,
         "reference_id": complaint_id,

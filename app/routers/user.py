@@ -62,6 +62,7 @@ def submit_complaint(
         title=complaint_request.title,
         description=complaint_request.description,
         language=complaint_request.language,
+        category=complaint_request.category,  # Bug #2 fix: pass user-selected category
     )
 
     if is_low and ai_reply_text:

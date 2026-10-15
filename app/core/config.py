@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     # Multi-task model and remote inference configuration
     use_multitask_model: bool = False
     multitask_model_name_or_path: str = "google/flan-t5-base"
+    custom_model_checkpoint_path: str = "ml/checkpoints/best.pt"
     remote_inference_url: str | None = None
     remote_whisper_url: str | None = None
 

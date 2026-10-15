@@ -2,6 +2,8 @@ import json
 import logging
 import os
 import re
+import tempfile
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Dict, List
@@ -67,78 +69,114 @@ class _LocalCursor:
 
 
 class _LocalCollection:
+    """Thread-safe JSON-backed collection.
+
+    Bug #10 fix (MODEL_COMPARISON.md §4.4):
+    - Uses a per-instance threading.Lock to prevent concurrent in-process reads.
+    - Writes use an atomic write pattern (write to a temp file then rename)
+      so partial writes can never corrupt the stored JSON on Windows.
+    """
+
     def __init__(self, file_path: Path):
         self.file_path = file_path
+        self._lock = threading.Lock()
         if not self.file_path.exists():
             self.file_path.write_text("[]", encoding="utf-8")
 
     def _read(self) -> List[Dict]:
+        """Read documents from disk (caller must hold self._lock)."""
         try:
             return json.loads(self.file_path.read_text(encoding="utf-8"))
         except Exception:
             return []
 
     def _write(self, docs: List[Dict]) -> None:
-        self.file_path.write_text(json.dumps(docs, ensure_ascii=True, indent=2), encoding="utf-8")
+        """Atomically write documents to disk (caller must hold self._lock).
+
+        Writes to a sibling temp file then renames so that a crash mid-write
+        cannot leave a partially-written JSON file.
+        """
+        data = json.dumps(docs, ensure_ascii=True, indent=2)
+        dir_path = self.file_path.parent
+        try:
+            fd, tmp_path = tempfile.mkstemp(dir=dir_path, suffix=".json.tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    fh.write(data)
+                os.replace(tmp_path, self.file_path)  # atomic on same filesystem
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
+        except Exception as exc:
+            logger.error("Atomic write failed for %s: %s", self.file_path, exc)
+            raise
 
     def create_index(self, *args, **kwargs):
         return None
 
     def find(self, query=None, projection=None):
-        docs = [_apply_projection(d, projection) for d in self._read() if _matches_filter(d, query)]
+        with self._lock:
+            docs = [_apply_projection(d, projection) for d in self._read() if _matches_filter(d, query)]
         return _LocalCursor(docs)
 
     def find_one(self, query=None, projection=None):
-        for doc in self._read():
-            if _matches_filter(doc, query):
-                return _apply_projection(doc, projection)
+        with self._lock:
+            for doc in self._read():
+                if _matches_filter(doc, query):
+                    return _apply_projection(doc, projection)
         return None
 
     def insert_one(self, doc: Dict):
-        docs = self._read()
-        docs.append(dict(doc))
-        self._write(docs)
-        return SimpleNamespace(inserted_id=len(docs) - 1)
+        with self._lock:
+            docs = self._read()
+            docs.append(dict(doc))
+            self._write(docs)
+            return SimpleNamespace(inserted_id=len(docs) - 1)
 
     def update_one(self, query: Dict, update: Dict, upsert: bool = False):
-        docs = self._read()
-        matched_index = None
-        for i, doc in enumerate(docs):
-            if _matches_filter(doc, query):
-                matched_index = i
-                break
+        with self._lock:
+            docs = self._read()
+            matched_index = None
+            for i, doc in enumerate(docs):
+                if _matches_filter(doc, query):
+                    matched_index = i
+                    break
 
-        if matched_index is None:
-            if not upsert:
-                return SimpleNamespace(matched_count=0, modified_count=0, upserted_id=None)
-            new_doc = dict(query)
-            for k, v in update.get("$setOnInsert", {}).items():
-                new_doc[k] = v
+            if matched_index is None:
+                if not upsert:
+                    return SimpleNamespace(matched_count=0, modified_count=0, upserted_id=None)
+                new_doc = dict(query)
+                for k, v in update.get("$setOnInsert", {}).items():
+                    new_doc[k] = v
+                for k, v in update.get("$set", {}).items():
+                    new_doc[k] = v
+                docs.append(new_doc)
+                self._write(docs)
+                return SimpleNamespace(matched_count=0, modified_count=0, upserted_id=len(docs) - 1)
+
+            target = docs[matched_index]
             for k, v in update.get("$set", {}).items():
-                new_doc[k] = v
-            docs.append(new_doc)
+                target[k] = v
+            docs[matched_index] = target
             self._write(docs)
-            return SimpleNamespace(matched_count=0, modified_count=0, upserted_id=len(docs) - 1)
-
-        target = docs[matched_index]
-        for k, v in update.get("$set", {}).items():
-            target[k] = v
-        docs[matched_index] = target
-        self._write(docs)
-        return SimpleNamespace(matched_count=1, modified_count=1, upserted_id=None)
+            return SimpleNamespace(matched_count=1, modified_count=1, upserted_id=None)
 
     def update_many(self, query: Dict, update: Dict):
-        docs = self._read()
-        matched_count = 0
-        for index, document in enumerate(docs):
-            if not _matches_filter(document, query):
-                continue
-            for key, value in update.get("$set", {}).items():
-                document[key] = value
-            docs[index] = document
-            matched_count += 1
-        if matched_count:
-            self._write(docs)
+        with self._lock:
+            docs = self._read()
+            matched_count = 0
+            for index, document in enumerate(docs):
+                if not _matches_filter(document, query):
+                    continue
+                for key, value in update.get("$set", {}).items():
+                    document[key] = value
+                docs[index] = document
+                matched_count += 1
+            if matched_count:
+                self._write(docs)
         return SimpleNamespace(matched_count=matched_count, modified_count=matched_count)
 
 

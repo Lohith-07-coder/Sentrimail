@@ -6,11 +6,16 @@ submission processing, and analytics aggregation.
 """
 
 from datetime import datetime, timedelta
+import concurrent.futures
+import logging
 import langdetect
 from deep_translator import GoogleTranslator
 
 from app.repositories.complaint_repository import complaint_repository
 from app.services.ai_service import analyze_complaint
+
+logger = logging.getLogger(__name__)
+_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="translator")
 
 
 def merge_or_backfill_analysis(complaint: dict) -> dict:
@@ -121,9 +126,14 @@ def process_complaint_submission(username: str, email: str, title: str, descript
     translated_text = original_text
     if detected_lang and detected_lang != "en":
         try:
-            translated_text = GoogleTranslator(source='auto', target='en').translate(original_text)
-        except Exception as e:
-            print(f"Translation failed: {e}")
+            # Bug #4 fix (MODEL_COMPARISON.md §4.2): run blocking HTTP call in thread pool
+            # so it does not block the FastAPI/Uvicorn event loop under concurrent requests.
+            future = _executor.submit(
+                lambda: GoogleTranslator(source="auto", target="en").translate(original_text)
+            )
+            translated_text = future.result(timeout=10)
+        except Exception as exc:
+            logger.warning("Translation (en) failed: %s", exc)
 
     history = complaint_repository.history_summary(username)
     analysis = analyze_complaint(
@@ -162,9 +172,15 @@ def process_complaint_submission(username: str, email: str, title: str, descript
         ai_reply_text = analysis.get("ai_suggested_response", "Thank you for your feedback.")
         if detected_lang and detected_lang != "en":
             try:
-                ai_reply_text = GoogleTranslator(source='en', target=detected_lang).translate(ai_reply_text)
-            except Exception:
-                pass
+                # Bug #4 fix: thread-pool offload for back-translation as well
+                _lang = detected_lang
+                _text = ai_reply_text
+                future = _executor.submit(
+                    lambda: GoogleTranslator(source="en", target=_lang).translate(_text)
+                )
+                ai_reply_text = future.result(timeout=10)
+            except Exception as exc:
+                logger.warning("Back-translation failed: %s", exc)
         complaint_data["admin_response"] = ai_reply_text
     else:
         complaint_data["status"] = "pending_admin"

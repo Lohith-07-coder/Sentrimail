@@ -20,6 +20,7 @@ from app.routers import admin_router, api_router, auth_router, user_router
 from app.services.ai_service import _load_models, _load_response_model
 from app.services.auth_service import auth_service
 from app.services.complaint_service import escalate_complaints
+from app.services.transcription_service import _load_whisper_model
 
 # Configure application logging
 configure_logging(get_settings())
@@ -91,6 +92,7 @@ async def startup_event():
     scheduler.start()
     _load_models()
     _load_response_model()
+    _load_whisper_model()  # Pre-load Whisper singleton (fixes Bug #3 from MODEL_COMPARISON.md)
 
 
 if __name__ == "__main__":

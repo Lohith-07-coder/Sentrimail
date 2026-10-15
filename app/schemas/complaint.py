@@ -14,6 +14,9 @@ class ComplaintCreateRequest(BaseModel):
     title: str
     description: str
     language: Optional[str] = None
+    # Bug #2 fix (MODEL_COMPARISON.md §4.1): capture the user-selected category
+    # so it is forwarded to analyze_complaint() instead of being hardcoded to "other".
+    category: str = "other"
 
     @classmethod
     def as_form(
@@ -21,9 +24,10 @@ class ComplaintCreateRequest(BaseModel):
         title: Annotated[str, Form()],
         description: Annotated[str, Form()],
         language: Annotated[Optional[str], Form()] = None,
+        category: Annotated[str, Form()] = "other",
     ) -> "ComplaintCreateRequest":
         """Build the schema from the established HTML form fields."""
-        return cls(title=title, description=description, language=language)
+        return cls(title=title, description=description, language=language, category=category)
 
 
 class ComplaintTrackingRequest(BaseModel):
