@@ -1,0 +1,95 @@
+%%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#1e293b', 'edgeLabelBackground': '#1e293b'}}}%%
+flowchart TD
+    IN["📨 Complaint Text\n(raw string input)"]
+
+    subgraph ENC_PRE ["Encoder Input Preparation"]
+        TOK["DistilBERT Tokenizer\n(vocab = 30,522, token-IDs only;\nno pretrained weights loaded into network)"]
+        SRC_EMB["Token Embedding\n(B × S × 256) × √d_model"]
+        SRC_PE["Sinusoidal Positional Encoding\nPE(pos, 2i) = sin(pos / 10000^{2i/d})\n(non-learned buffer)"]
+        PAD["Padding Mask\n(True = pad, ignored in attention)"]
+    end
+
+    IN --> TOK --> SRC_EMB --> SRC_PE
+    TOK -->|"generates"| PAD
+
+    subgraph ENC ["4 × SentriEncoder Layers"]
+        direction TB
+        ATTN_E["Multi-Head Self-Attention\n(nhead=4, d_k=64)"]
+        NORM1_E["Add & LayerNorm (Post-LN)"]
+        FFN_E["Feed-Forward Network\n(Linear→ReLU→Linear, d_ff=1024)"]
+        NORM2_E["Add & LayerNorm (Post-LN)"]
+        ATTN_E --> NORM1_E --> FFN_E --> NORM2_E
+    end
+
+    SRC_PE --> ENC
+    PAD -->|"src_key_padding_mask"| ENC
+
+    ENC_OUT["Encoder Output\n(B × 128 × 256)\nContextual token representations"]
+    ENC --> ENC_OUT
+
+    POOL["Masked Mean Pooling\n→ (B × 256)\nAverages over non-padding positions"]
+    ENC_OUT --> POOL
+
+    subgraph HEADS ["Multi-Task Classification Heads"]
+        SENT["Sentiment Head\nLinear(256→128)→ReLU→Dropout→Linear(128→3)\nPOSITIVE / NEUTRAL / NEGATIVE"]
+        EMOT["Emotion Head\nLinear(256→128)→ReLU→Dropout→Linear(128→7)\nanger/fear/sadness/disgust/surprise/joy/neutral"]
+        CAT["Category Head\nLinear(256→128)→ReLU→Dropout→Linear(128→7)\nbilling/technical/delivery/customer_service\nproduct/refund/other"]
+        ISS["Issue Head\nLinear(256→128)→ReLU→Dropout→Linear(128→6)\nbilling/auth/technical/delivery/support/general"]
+    end
+
+    POOL --> SENT & EMOT & CAT & ISS
+
+    subgraph DEC_PRE ["Decoder Input Preparation"]
+        direction TB
+        TGT_IN_TRAIN["Training:\nRight-shifted target tokens\n(Teacher Forcing)"]
+        TGT_IN_INFER["Inference:\nStarting from BOS token\n(Greedy Autoregressive)"]
+        TGT_EMB["Token Embedding\n(B × T × 256) × √d_model"]
+        TGT_PE["Sinusoidal Positional Encoding\n(non-learned)"]
+    end
+
+    TGT_IN_TRAIN & TGT_IN_INFER --> TGT_EMB --> TGT_PE
+
+    subgraph DEC ["4 × SentriDecoder Layers"]
+        direction TB
+        CAUSAL["Causal Masked Self-Attention\n(upper-triangular mask:\nTrue=masked, prevents future look-ahead)"]
+        NORM1_D["Add & LayerNorm (Post-LN)"]
+        CROSS["Encoder–Decoder Cross-Attention\n(Decoder queries attend to\nEncoder key/value pairs)"]
+        NORM2_D["Add & LayerNorm (Post-LN)"]
+        FFN_D["Feed-Forward Network\n(d_ff=1024)"]
+        NORM3_D["Add & LayerNorm (Post-LN)"]
+        CAUSAL --> NORM1_D --> CROSS --> NORM2_D --> FFN_D --> NORM3_D
+    end
+
+    TGT_PE --> DEC
+    ENC_OUT -->|"memory (key, value)"| CROSS
+    PAD -->|"memory_key_padding_mask"| CROSS
+
+    PROJ["Vocabulary Projection\nLinear(256 → 30,522)\n(weight-tied to decoder token embedding)"]
+    DEC --> PROJ
+
+    LOGITS["Next-Token Logits / Probabilities\n(B × T × 30,522)"]
+    PROJ --> LOGITS
+
+    subgraph TRAIN_PATH ["Training Path"]
+        CE_GEN["Cross-Entropy Loss\n(ignore_index=-100 for padding)\ngeneration_loss_weight=2.0"]
+        TOTAL["Total Loss =\nw_sent·CE_sent + w_emot·CE_emot\n+ w_cat·CE_cat + w_iss·CE_iss\n+ 2.0·CE_gen"]
+    end
+
+    LOGITS -->|"teacher-forcing"| CE_GEN --> TOTAL
+    SENT & EMOT & CAT & ISS --> TOTAL
+
+    subgraph INFER_PATH ["Inference Path"]
+        GREEDY["Greedy Argmax\n(argmax over vocab at each step)"]
+        EOS_CHK["EOS Check\n(stop if all sequences finished\nor max_tgt_len=64 reached)"]
+        DECODE["Decoded Text\n→ root_cause_suggestion\n→ response_draft"]
+    end
+
+    LOGITS -->|"autoregressive"| GREEDY --> EOS_CHK --> DECODE
+
+    style ENC_PRE fill:#1e3a5f,stroke:#3b82f6
+    style ENC fill:#1a1a4a,stroke:#818cf8
+    style HEADS fill:#2a1500,stroke:#f97316
+    style DEC_PRE fill:#003020,stroke:#10b981
+    style DEC fill:#002a18,stroke:#34d399
+    style TRAIN_PATH fill:#2a0000,stroke:#ef4444
+    style INFER_PATH fill:#002a00,stroke:#22c55e

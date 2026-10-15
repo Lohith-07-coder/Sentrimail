@@ -1,0 +1,64 @@
+%%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#1e293b', 'edgeLabelBackground': '#1e293b'}}}%%
+flowchart TD
+    A["📨 Incoming Complaint or Voice Upload"]
+
+    subgraph PRE ["Preprocessing Layer"]
+        B1["Language Detection\n(langdetect)"]
+        B2["Translation to English\n(GoogleTranslator — sync HTTP)"]
+        B3["Input Validation\n& Truncation (512 tokens max)"]
+    end
+
+    A --> B1
+    B1 --> B2
+    B2 --> B3
+
+    subgraph MODELS ["Pretrained Hugging Face Pipelines  ①"]
+        C1["DistilBERT SST-2\nSentiment Analysis\n(66M params, ~40ms)"]
+        C2["j-hartmann/emotion-english-distilroberta-base\nEmotion Classification\n(82M params, 7 classes, ~60ms)"]
+        C3["google/flan-t5-small\nText Generation\n(60M params, ~180ms)"]
+        C4["OpenAI Whisper base\nSpeech-to-Text\n(74M params — voice only)"]
+    end
+
+    B3 --> C1 & C2 & C3
+    A -->|"voice path"| C4
+
+    subgraph RETRIEVE ["Retrieval Layer"]
+        D1["TF-IDF Cosine Similarity\n(response_model.json vectors)"]
+        D2["Sentence Transformer\nall-MiniLM-L6-v2\nSemantic Similarity"]
+    end
+
+    B3 --> D1 & D2
+
+    subgraph SCORE ["Priority & Category Scoring"]
+        E["Rule-Based Priority Engine\n(0–100 score → LOW/MEDIUM/HIGH/CRITICAL)\nUrgency keyword detection\nCategory inference (7 classes)\nIntent classification (7 intents)\nEntity extraction (email/phone/money/ref-id)"]
+    end
+
+    C1 & C2 --> E
+    D1 & D2 --> E
+
+    subgraph RESPONSE ["Response Generation (waterfall)"]
+        F1["① Retrieval-Grounded Flan-T5\n(context + top TFIDF/semantic match)"]
+        F2["② Direct Retrieval Match\n(score ≥ 0.25)"]
+        F3["③ Flan-T5 Local LLM\n(zero-shot prompt)"]
+        F4["④ Category-Specific Template\n(billing/auth/delivery/technical)"]
+        F5["⑤ Generic Acknowledgement Fallback"]
+    end
+
+    E --> F1
+    F1 -->|"score < threshold"| F2
+    F2 -->|"empty"| F3
+    F3 -->|"empty"| F4
+    F4 -->|"empty"| F5
+
+    subgraph OUTPUT ["API / Application Response"]
+        G["Analysis JSON\n• sentiment_label / sentiment_score\n• emotion_label / emotion_score\n• priority / priority_score\n• category / issue / intent\n• entities / urgency\n• root_cause_summary\n• admin_suggested_response\n• response_source / response_confidence\n• auto_resolvable"]
+    end
+
+    F1 & F2 & F3 & F4 & F5 --> OUTPUT
+
+    style PRE fill:#1e3a5f,stroke:#3b82f6
+    style MODELS fill:#1e2a40,stroke:#f97316
+    style RETRIEVE fill:#0f3030,stroke:#14b8a6
+    style SCORE fill:#1a2010,stroke:#84cc16
+    style RESPONSE fill:#2a1a00,stroke:#f59e0b
+    style OUTPUT fill:#0f2a00,stroke:#22c55e
